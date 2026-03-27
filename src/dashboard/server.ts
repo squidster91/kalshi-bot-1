@@ -69,7 +69,7 @@ app.get('/api/rfqs', (_req, res) => {
       SELECT id, market_ticker, event_ticker, legs_json, contracts_requested,
              target_cost_dollars, received_at, quoted, quote_id,
              quote_price_yes, quote_price_no, computed_fair_value,
-             num_legs, is_same_game
+             num_legs, is_same_game, leg_prices_snapshot
       FROM rfqs_seen
       ORDER BY received_at DESC
       LIMIT 500

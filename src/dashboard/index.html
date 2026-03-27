@@ -462,18 +462,20 @@
       <table id="rfqTable">
         <thead>
           <tr>
-            <th>Time</th>
-            <th>Category</th>
-            <th>Market Ticker</th>
-            <th>Event</th>
-            <th>Legs</th>
-            <th>Contracts</th>
-            <th>Target Cost</th>
-            <th>Status</th>
+            <th title="When this RFQ was received by our bot">Time</th>
+            <th title="Market category parsed from the ticker prefix">Category</th>
+            <th title="Kalshi market ticker for this combo/parlay">Market Ticker</th>
+            <th title="The underlying event this RFQ belongs to">Event</th>
+            <th title="Number of individual markets combined in this parlay">Legs</th>
+            <th title="Explicit contract count requested by the buyer. '--' means the buyer specified a budget (Target Cost) instead and wants as many contracts as that budget buys.">Contracts</th>
+            <th title="The dollar amount the buyer is willing to spend per contract for this combo. This is what they'd pay us if we quoted and they accepted.">Target Cost</th>
+            <th title="Naive fair value = product of each leg's mid-price (implied probability) from the orderbook at the time the RFQ arrived. Assumes independent legs.">Fair Value</th>
+            <th title="Edge = Target Cost minus Fair Value. Positive (green) means the buyer is overpaying vs fair value = profitable for us to fill.">Edge</th>
+            <th title="'Observed' = we saw but didn't quote (paper mode). 'Quoted' = we submitted a price.">Status</th>
           </tr>
         </thead>
         <tbody id="rfqTableBody">
-          <tr><td colspan="8" class="empty-state">Loading RFQ data...</td></tr>
+          <tr><td colspan="10" class="empty-state">Loading RFQ data...</td></tr>
         </tbody>
       </table>
     </div>
@@ -606,6 +608,12 @@
     } catch { return []; }
   }
 
+  function parsePrices(json) {
+    if (!json) return {};
+    try { return typeof json === 'string' ? JSON.parse(json) : json; }
+    catch { return {}; }
+  }
+
   async function fetchJSON(url) {
     const res = await fetch(url);
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -661,7 +669,7 @@
       document.getElementById('rfqCount').textContent = rfqs.length + ' RFQs loaded';
 
       if (rfqs.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="8" class="empty-state">No RFQs received yet. Waiting for market activity...</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="10" class="empty-state">No RFQs received yet. Waiting for market activity...</td></tr>';
         return;
       }
 
@@ -672,10 +680,25 @@
         const numLegs = r.num_legs || legs.length || 0;
         const isHighLegs = numLegs >= 5;
         const cost = r.target_cost_dollars;
-        const costStr = cost && Number(cost) > 0 ? '$' + Number(cost).toFixed(2) : '--';
+        const costNum = Number(cost) || 0;
+        const costStr = costNum > 0 ? '$' + costNum.toFixed(2) : '--';
         const contracts = r.contracts_requested && Number(r.contracts_requested) > 0
           ? Number(r.contracts_requested).toFixed(0)
           : '--';
+
+        // Compute fair value from leg_prices_snapshot
+        let fairValue = null;
+        const prices = r.leg_prices_snapshot ? parsePrices(r.leg_prices_snapshot) : {};
+        const priceVals = Object.values(prices);
+        if (priceVals.length > 0) {
+          fairValue = 1;
+          for (const p of priceVals) fairValue *= p;
+        }
+
+        const fvStr = fairValue !== null ? '$' + fairValue.toFixed(4) : '--';
+        const edge = (fairValue !== null && costNum > 0) ? costNum - fairValue : null;
+        const edgeStr = edge !== null ? ((edge >= 0 ? '+' : '') + (edge * 100).toFixed(1) + 'c') : '--';
+        const edgeCls = edge !== null ? (edge >= 0 ? 'color:var(--accent-green)' : 'color:var(--accent-red)') : 'color:var(--text-muted)';
 
         html += `<tr style="${isHighLegs ? 'background:rgba(234,179,8,0.04)' : ''}">
           <td class="mono ${timeAgoClass(r.received_at)}">${timeAgo(r.received_at)}</td>
@@ -689,13 +712,15 @@
           </td>
           <td class="mono">${contracts}</td>
           <td class="mono cost-val">${costStr}</td>
+          <td class="mono" style="color:var(--text-secondary)">${fvStr}</td>
+          <td class="mono" style="${edgeCls};font-weight:600">${edgeStr}</td>
           <td><span style="color:${r.quoted ? 'var(--accent-blue)' : 'var(--text-muted)'};font-size:11px">${r.quoted ? 'Quoted' : 'Observed'}</span></td>
         </tr>`;
 
         // Expandable legs detail row
         if (legs.length > 0) {
           html += `<tr id="legs-${i}" class="legs-detail">
-            <td colspan="8" style="padding:8px 12px 8px 48px;background:var(--bg-card)">
+            <td colspan="10" style="padding:8px 12px 8px 48px;background:var(--bg-card)">
               ${legs.map(l => {
                 const side = (l.side || '').toLowerCase();
                 const sideClass = side === 'yes' ? 'leg-side-yes' : 'leg-side-no';
