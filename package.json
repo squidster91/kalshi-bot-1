@@ -1,0 +1,27 @@
+{
+  "name": "kalshi-mm",
+  "version": "0.1.0",
+  "description": "Kalshi Combo RFQ Market-Making Bot",
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "dev": "ts-node src/index.ts",
+    "calibrate": "ts-node scripts/calibrate-correlations.ts",
+    "backtest": "ts-node scripts/backtest.ts",
+    "pnl": "ts-node scripts/pnl-report.ts"
+  },
+  "dependencies": {
+    "better-sqlite3": "^11.7.0",
+    "dotenv": "^16.4.7",
+    "jstat": "^1.9.6",
+    "ws": "^8.18.0"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^7.6.12",
+    "@types/node": "^22.10.0",
+    "@types/ws": "^8.5.13",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.7.0"
+  }
+}
