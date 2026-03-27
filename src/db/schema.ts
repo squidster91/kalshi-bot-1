@@ -154,18 +154,28 @@ function initSchema(db: Database.Database): void {
   } catch { /* column already exists */ }
   try {
     db.exec(`ALTER TABLE rfqs_seen ADD COLUMN has_player_props INTEGER DEFAULT 0`);
-  } catch { /* column already exists */ }
-
-  // Backfill has_player_props for existing rows (one-time, uses index)
-  try {
-    db.exec(`
+    // Only backfill when column is first added (new column = all zeros)
+    // Do it in batches to avoid CPU/disk spikes
+    logger.info('Backfilling has_player_props column...');
+    let updated = 0;
+    const batchStmt = db.prepare(`
       UPDATE rfqs_seen SET has_player_props = 1
-      WHERE has_player_props = 0
-        AND (legs_json LIKE '%PTS%' OR legs_json LIKE '%REB%' OR legs_json LIKE '%AST%'
-             OR legs_json LIKE '%3PM%' OR legs_json LIKE '%TPM%' OR legs_json LIKE '%STL%'
-             OR legs_json LIKE '%BLK%')
+      WHERE rowid IN (
+        SELECT rowid FROM rfqs_seen
+        WHERE has_player_props = 0
+          AND (legs_json LIKE '%PTS%' OR legs_json LIKE '%REB%' OR legs_json LIKE '%AST%'
+               OR legs_json LIKE '%3PM%' OR legs_json LIKE '%TPM%' OR legs_json LIKE '%STL%'
+               OR legs_json LIKE '%BLK%')
+        LIMIT 5000
+      )
     `);
-  } catch { /* ok */ }
+    while (true) {
+      const result = batchStmt.run();
+      updated += result.changes;
+      if (result.changes === 0) break;
+    }
+    logger.info('Backfill complete', { updated });
+  } catch { /* column already exists — no backfill needed */ }
 }
 
 export function closeDb(): void {
