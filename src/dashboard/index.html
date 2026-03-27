@@ -3,29 +3,29 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>KalshiMM Dashboard</title>
+<title>KalshiMM - RFQ Monitor</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 <style>
   :root {
     --bg-primary: #0a0c10;
-    --bg-secondary: #12141c;
-    --bg-card: #161923;
-    --bg-hover: #1e2130;
-    --bg-row-alt: #13151d;
-    --border: #252838;
-    --text-primary: #e2e4ec;
-    --text-secondary: #7c8198;
-    --text-muted: #4e5268;
-    --accent-blue: #4c7cf5;
+    --bg-secondary: #111318;
+    --bg-card: #161921;
+    --bg-hover: #1c2030;
+    --bg-row-alt: #12141a;
+    --border: #1e2230;
+    --border-bright: #2a3050;
+    --text-primary: #e8eaf0;
+    --text-secondary: #7c8190;
+    --text-muted: #4a4f62;
+    --accent-blue: #3b82f6;
     --accent-green: #22c55e;
     --accent-red: #ef4444;
     --accent-yellow: #eab308;
-    --accent-purple: #a78bfa;
-    --accent-cyan: #06b6d4;
+    --accent-purple: #a855f7;
     --accent-orange: #f97316;
+    --accent-cyan: #06b6d4;
   }
 
   * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -36,194 +36,170 @@
     color: var(--text-primary);
     line-height: 1.4;
     min-height: 100vh;
-    font-size: 13px;
+    overflow-x: hidden;
   }
 
   /* ── Header ── */
   .header {
     background: var(--bg-secondary);
     border-bottom: 1px solid var(--border);
-    padding: 8px 20px;
+    padding: 10px 24px;
     display: flex;
     align-items: center;
     justify-content: space-between;
-    height: 42px;
+    height: 48px;
   }
 
   .header-left {
     display: flex;
     align-items: center;
-    gap: 10px;
+    gap: 12px;
   }
 
   .logo {
-    font-size: 14px;
+    font-size: 15px;
     font-weight: 700;
-    letter-spacing: -0.3px;
-    color: var(--accent-blue);
+    letter-spacing: -0.5px;
+    color: var(--text-primary);
   }
 
+  .logo span { color: var(--accent-blue); }
+
   .badge {
-    padding: 2px 7px;
-    border-radius: 3px;
+    padding: 2px 8px;
+    border-radius: 4px;
     font-size: 10px;
     font-weight: 600;
     text-transform: uppercase;
-    letter-spacing: 0.5px;
+    letter-spacing: 0.8px;
   }
 
-  .badge-paper { background: rgba(234, 179, 8, 0.15); color: var(--accent-yellow); border: 1px solid rgba(234, 179, 8, 0.25); }
-  .badge-live { background: rgba(34, 197, 94, 0.15); color: var(--accent-green); border: 1px solid rgba(34, 197, 94, 0.25); }
-  .badge-demo { background: rgba(167, 139, 250, 0.15); color: var(--accent-purple); border: 1px solid rgba(167, 139, 250, 0.25); }
-  .badge-production { background: rgba(34, 197, 94, 0.15); color: var(--accent-green); border: 1px solid rgba(34, 197, 94, 0.25); }
-  .badge-kill { background: rgba(239, 68, 68, 0.15); color: var(--accent-red); border: 1px solid rgba(239, 68, 68, 0.25); }
+  .badge-paper { background: rgba(234, 179, 8, 0.12); color: var(--accent-yellow); }
+  .badge-live { background: rgba(34, 197, 94, 0.12); color: var(--accent-green); }
+  .badge-demo { background: rgba(168, 85, 247, 0.12); color: var(--accent-purple); }
+  .badge-prod { background: rgba(59, 130, 246, 0.12); color: var(--accent-blue); }
+  .badge-kill { background: rgba(239, 68, 68, 0.15); color: var(--accent-red); }
 
   .header-right {
     display: flex;
     align-items: center;
-    gap: 10px;
-    font-size: 11px;
+    gap: 16px;
     color: var(--text-secondary);
+    font-size: 12px;
   }
 
   .status-dot {
-    width: 6px;
-    height: 6px;
+    width: 6px; height: 6px;
     border-radius: 50%;
     background: var(--accent-green);
     display: inline-block;
     animation: pulse 2s infinite;
   }
 
-  @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
-
-  .btn-refresh {
-    background: var(--bg-card);
-    border: 1px solid var(--border);
-    color: var(--text-secondary);
-    padding: 3px 10px;
-    border-radius: 4px;
-    font-size: 11px;
-    cursor: pointer;
-    font-family: inherit;
-    transition: all 0.15s;
-  }
-  .btn-refresh:hover { background: var(--bg-hover); color: var(--text-primary); }
+  @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.3; } }
 
   /* ── Stats Bar ── */
   .stats-bar {
-    display: flex;
-    align-items: center;
-    gap: 0;
     background: var(--bg-secondary);
     border-bottom: 1px solid var(--border);
-    padding: 0 20px;
-    height: 38px;
+    padding: 8px 24px;
+    display: flex;
+    gap: 32px;
+    align-items: center;
     overflow-x: auto;
   }
 
   .stat-item {
     display: flex;
-    align-items: center;
+    align-items: baseline;
     gap: 6px;
-    padding: 0 16px;
-    border-right: 1px solid var(--border);
     white-space: nowrap;
-    height: 100%;
   }
-
-  .stat-item:first-child { padding-left: 0; }
-  .stat-item:last-child { border-right: none; }
 
   .stat-label {
     font-size: 10px;
     font-weight: 500;
     text-transform: uppercase;
-    letter-spacing: 0.5px;
+    letter-spacing: 0.6px;
     color: var(--text-muted);
   }
 
   .stat-value {
     font-family: 'JetBrains Mono', monospace;
-    font-size: 13px;
+    font-size: 14px;
     font-weight: 600;
     color: var(--text-primary);
   }
 
-  .positive { color: var(--accent-green); }
-  .negative { color: var(--accent-red); }
-
-  /* ── Main Layout ── */
-  .main-layout {
-    display: flex;
-    height: calc(100vh - 80px);
-    overflow: hidden;
+  .stat-sep {
+    width: 1px;
+    height: 20px;
+    background: var(--border);
   }
 
-  .main-content {
-    flex: 1;
+  .positive { color: var(--accent-green) !important; }
+  .negative { color: var(--accent-red) !important; }
+
+  /* ── Main Layout ── */
+  .main {
+    display: grid;
+    grid-template-columns: 1fr 320px;
+    height: calc(100vh - 48px - 40px);
+  }
+
+  .main-left {
     display: flex;
     flex-direction: column;
     overflow: hidden;
-    min-width: 0;
+    border-right: 1px solid var(--border);
   }
 
-  /* ── Chart Row ── */
-  .chart-row {
-    padding: 12px 20px;
+  .main-right {
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    background: var(--bg-secondary);
+  }
+
+  /* ── Section Headers ── */
+  .section-header {
+    padding: 10px 16px;
     border-bottom: 1px solid var(--border);
-    height: 200px;
-    min-height: 200px;
-    flex-shrink: 0;
-  }
-
-  .chart-header {
-    font-size: 11px;
+    font-size: 12px;
     font-weight: 600;
     text-transform: uppercase;
     letter-spacing: 0.5px;
     color: var(--text-secondary);
-    margin-bottom: 8px;
-  }
-
-  .chart-container {
-    height: calc(100% - 24px);
-    position: relative;
-  }
-
-  /* ── RFQ Table Section ── */
-  .table-section {
-    flex: 1;
-    display: flex;
-    flex-direction: column;
-    overflow: hidden;
-    min-height: 0;
-  }
-
-  .table-header {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 8px 20px;
-    border-bottom: 1px solid var(--border);
-    background: var(--bg-secondary);
     flex-shrink: 0;
   }
 
-  .table-header-left {
-    font-size: 12px;
-    font-weight: 600;
-    color: var(--text-primary);
-  }
-
-  .table-header-right {
+  .section-count {
     font-size: 11px;
+    font-weight: 400;
     color: var(--text-muted);
+    text-transform: none;
+    letter-spacing: 0;
   }
 
-  .table-wrap {
+  /* ── RFQ Table ── */
+  .rfq-table-wrap {
     flex: 1;
-    overflow: auto;
+    overflow-y: auto;
+    overflow-x: auto;
+  }
+
+  .rfq-table-wrap::-webkit-scrollbar {
+    width: 6px; height: 6px;
+  }
+  .rfq-table-wrap::-webkit-scrollbar-track {
+    background: var(--bg-primary);
+  }
+  .rfq-table-wrap::-webkit-scrollbar-thumb {
+    background: var(--border-bright);
+    border-radius: 3px;
   }
 
   table {
@@ -236,229 +212,173 @@
     position: sticky;
     top: 0;
     z-index: 10;
-    background: var(--bg-secondary);
-    padding: 6px 10px;
+    background: var(--bg-card);
+    padding: 8px 12px;
     text-align: left;
     font-weight: 600;
     color: var(--text-muted);
     font-size: 10px;
     text-transform: uppercase;
-    letter-spacing: 0.5px;
-    border-bottom: 1px solid var(--border);
+    letter-spacing: 0.6px;
+    border-bottom: 1px solid var(--border-bright);
     white-space: nowrap;
   }
 
   tbody td {
-    padding: 4px 10px;
-    border-bottom: 1px solid rgba(37, 40, 56, 0.5);
+    padding: 6px 12px;
+    border-bottom: 1px solid var(--border);
     white-space: nowrap;
     font-size: 12px;
   }
 
-  tbody tr:nth-child(even) { background: var(--bg-row-alt); }
   tbody tr:hover { background: var(--bg-hover); }
-  tbody tr.high-legs { background: rgba(76, 124, 245, 0.06); }
-  tbody tr.high-legs:hover { background: rgba(76, 124, 245, 0.1); }
+  tbody tr:nth-child(even) { background: var(--bg-row-alt); }
+  tbody tr:nth-child(even):hover { background: var(--bg-hover); }
 
   .mono {
     font-family: 'JetBrains Mono', monospace;
     font-size: 11px;
   }
 
-  .status {
+  /* Category tags */
+  .cat-tag {
+    display: inline-block;
     padding: 1px 6px;
     border-radius: 3px;
     font-size: 10px;
     font-weight: 600;
+    letter-spacing: 0.3px;
+    white-space: nowrap;
   }
 
-  .status-quoted { background: rgba(76, 124, 245, 0.15); color: var(--accent-blue); }
-  .status-skipped { background: rgba(78, 82, 104, 0.2); color: var(--text-muted); }
+  .cat-nba { background: rgba(249, 115, 22, 0.15); color: var(--accent-orange); }
+  .cat-nfl { background: rgba(59, 130, 246, 0.15); color: var(--accent-blue); }
+  .cat-mlb { background: rgba(239, 68, 68, 0.15); color: var(--accent-red); }
+  .cat-nhl { background: rgba(6, 182, 212, 0.15); color: var(--accent-cyan); }
+  .cat-ncaab { background: rgba(168, 85, 247, 0.15); color: var(--accent-purple); }
+  .cat-ncaaf { background: rgba(168, 85, 247, 0.12); color: #c084fc; }
+  .cat-soccer { background: rgba(34, 197, 94, 0.15); color: var(--accent-green); }
+  .cat-politics { background: rgba(234, 179, 8, 0.15); color: var(--accent-yellow); }
+  .cat-crypto { background: rgba(249, 115, 22, 0.12); color: #fb923c; }
+  .cat-multi { background: rgba(59, 130, 246, 0.10); color: #60a5fa; }
+  .cat-cross { background: rgba(168, 85, 247, 0.10); color: #c084fc; }
+  .cat-other { background: rgba(124, 129, 144, 0.12); color: var(--text-secondary); }
 
-  .text-muted { color: var(--text-muted); }
-  .text-secondary { color: var(--text-secondary); }
-  .text-accent { color: var(--accent-blue); }
+  /* Legs highlight */
+  .legs-high { color: var(--accent-yellow); font-weight: 600; }
 
-  /* Legs tooltip */
-  .legs-cell {
-    position: relative;
-    cursor: default;
-  }
+  /* Target cost */
+  .cost-val { color: var(--accent-green); }
 
-  .legs-badge {
-    display: inline-flex;
-    align-items: center;
-    gap: 3px;
-  }
-
-  .legs-detail-btn {
-    display: inline-block;
-    width: 14px;
-    height: 14px;
-    line-height: 14px;
-    text-align: center;
-    border-radius: 3px;
-    background: rgba(76, 124, 245, 0.15);
-    color: var(--accent-blue);
-    font-size: 9px;
-    font-weight: 700;
+  /* Expandable legs detail */
+  .legs-toggle {
     cursor: pointer;
-    user-select: none;
+    color: var(--accent-blue);
+    text-decoration: none;
+    font-weight: 500;
   }
+  .legs-toggle:hover { text-decoration: underline; }
 
-  .legs-detail-btn:hover { background: rgba(76, 124, 245, 0.3); }
-
-  .legs-tooltip {
+  .legs-detail {
     display: none;
-    position: fixed;
-    z-index: 1000;
-    background: var(--bg-card);
-    border: 1px solid var(--border);
-    border-radius: 6px;
-    padding: 10px 12px;
-    max-width: 420px;
-    min-width: 250px;
-    box-shadow: 0 8px 24px rgba(0,0,0,0.5);
-    font-size: 11px;
-    pointer-events: none;
-  }
-
-  .legs-tooltip.visible {
-    display: block;
-  }
-
-  .legs-tooltip-title {
-    font-weight: 600;
-    color: var(--text-secondary);
-    margin-bottom: 6px;
-    font-size: 10px;
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
   }
 
   .leg-item {
-    padding: 3px 0;
-    border-bottom: 1px solid rgba(37, 40, 56, 0.5);
-    color: var(--text-primary);
+    display: flex;
+    gap: 12px;
+    padding: 2px 0;
     font-family: 'JetBrains Mono', monospace;
     font-size: 11px;
   }
 
-  .leg-item:last-child { border-bottom: none; }
+  .leg-side-yes { color: var(--accent-green); }
+  .leg-side-no { color: var(--accent-red); }
 
-  /* ── Sidebar ── */
-  .sidebar {
-    width: 280px;
-    min-width: 280px;
-    border-left: 1px solid var(--border);
-    background: var(--bg-secondary);
-    overflow-y: auto;
-    display: flex;
-    flex-direction: column;
-  }
-
-  .sidebar-section {
-    padding: 14px 16px;
+  /* ── Right Panel ── */
+  .panel-section {
     border-bottom: 1px solid var(--border);
   }
 
-  .sidebar-title {
-    font-size: 10px;
-    font-weight: 600;
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
-    color: var(--text-muted);
-    margin-bottom: 10px;
+  /* Chart */
+  .chart-container {
+    padding: 12px;
+    height: 200px;
+    position: relative;
   }
 
-  .sidebar-stat {
-    display: flex;
-    justify-content: space-between;
-    padding: 4px 0;
-    font-size: 12px;
+  /* Categories */
+  .categories-list {
+    padding: 8px 12px;
+    max-height: 300px;
+    overflow-y: auto;
   }
 
-  .sidebar-stat-label { color: var(--text-secondary); }
-  .sidebar-stat-value { font-family: 'JetBrains Mono', monospace; font-weight: 500; color: var(--text-primary); }
-
-  .category-row {
+  .cat-row {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    padding: 3px 0;
-    font-size: 11px;
+    padding: 5px 0;
+    font-size: 12px;
+    border-bottom: 1px solid var(--border);
   }
 
-  .category-name {
-    color: var(--text-secondary);
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-    max-width: 160px;
-  }
+  .cat-row:last-child { border-bottom: none; }
 
-  .category-count {
+  .cat-name { color: var(--text-primary); }
+
+  .cat-count {
     font-family: 'JetBrains Mono', monospace;
     font-size: 11px;
-    color: var(--text-primary);
-    font-weight: 500;
+    color: var(--text-secondary);
   }
 
-  .category-bar-wrap {
+  .cat-bar {
     height: 3px;
-    background: rgba(37, 40, 56, 0.8);
-    border-radius: 2px;
-    margin-top: 2px;
-    margin-bottom: 4px;
-  }
-
-  .category-bar {
-    height: 100%;
-    border-radius: 2px;
     background: var(--accent-blue);
-    transition: width 0.3s;
+    border-radius: 2px;
+    margin-top: 3px;
+    transition: width 0.4s ease;
   }
 
-  .donut-wrap {
-    display: flex;
-    justify-content: center;
-    margin-bottom: 10px;
+  /* Summary stats in right panel */
+  .summary-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1px;
+    background: var(--border);
   }
 
-  .donut-wrap canvas {
-    max-width: 160px;
-    max-height: 160px;
-  }
-
-  /* ── Footer ── */
-  .footer {
+  .summary-cell {
     background: var(--bg-secondary);
-    border-top: 1px solid var(--border);
-    padding: 4px 20px;
-    font-size: 10px;
-    color: var(--text-muted);
+    padding: 10px 12px;
     text-align: center;
-    flex-shrink: 0;
   }
 
-  /* ── Empty state ── */
+  .summary-cell .stat-label { display: block; margin-bottom: 4px; }
+  .summary-cell .stat-value { font-size: 16px; }
+
+  /* ── Empty/loading states ── */
   .empty-state {
-    padding: 30px 20px;
+    padding: 40px 20px;
     text-align: center;
     color: var(--text-muted);
     font-size: 12px;
   }
 
-  /* ── Scrollbar ── */
-  ::-webkit-scrollbar { width: 6px; height: 6px; }
-  ::-webkit-scrollbar-track { background: transparent; }
-  ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
-  ::-webkit-scrollbar-thumb:hover { background: var(--text-muted); }
-
   /* ── Responsive ── */
-  @media (max-width: 1100px) {
-    .sidebar { display: none; }
+  @media (max-width: 1024px) {
+    .main { grid-template-columns: 1fr; }
+    .main-right { display: none; }
   }
+
+  @media (max-width: 768px) {
+    .stats-bar { padding: 8px 12px; gap: 16px; }
+    .header { padding: 10px 12px; }
+  }
+
+  /* Time-ago formatting */
+  .time-ago { color: var(--text-secondary); }
+  .time-recent { color: var(--accent-green); }
 </style>
 </head>
 <body>
@@ -466,15 +386,14 @@
 <!-- Header -->
 <div class="header">
   <div class="header-left">
-    <span class="logo">KalshiMM</span>
+    <div class="logo">Kalshi<span>MM</span></div>
     <span id="modeBadge" class="badge badge-paper">PAPER</span>
-    <span id="envBadge" class="badge badge-demo">DEMO</span>
+    <span id="envBadge" class="badge badge-prod">PRODUCTION</span>
     <span id="killBadge" class="badge badge-kill" style="display:none">KILL SWITCH</span>
   </div>
   <div class="header-right">
     <span class="status-dot"></span>
     <span id="lastUpdate">--</span>
-    <button class="btn-refresh" onclick="refreshAll()">Refresh</button>
   </div>
 </div>
 
@@ -484,112 +403,107 @@
     <span class="stat-label">RFQs Today</span>
     <span class="stat-value" id="statRfqs">--</span>
   </div>
+  <div class="stat-sep"></div>
   <div class="stat-item">
     <span class="stat-label">Quotes</span>
     <span class="stat-value" id="statQuotes">--</span>
   </div>
+  <div class="stat-sep"></div>
   <div class="stat-item">
     <span class="stat-label">Fills</span>
     <span class="stat-value" id="statFills">--</span>
   </div>
+  <div class="stat-sep"></div>
   <div class="stat-item">
-    <span class="stat-label">P&amp;L</span>
+    <span class="stat-label">P&L</span>
     <span class="stat-value" id="statPnl">--</span>
   </div>
+  <div class="stat-sep"></div>
   <div class="stat-item">
     <span class="stat-label">Balance</span>
     <span class="stat-value" id="statBalance">--</span>
   </div>
+  <div class="stat-sep"></div>
   <div class="stat-item">
     <span class="stat-label">Uptime</span>
-    <span class="stat-value" id="statUptime">--</span>
+    <span class="stat-value" id="statUptime" style="color:var(--text-secondary);font-size:12px">--</span>
   </div>
 </div>
 
-<!-- Main Layout -->
-<div class="main-layout">
+<!-- Main Content -->
+<div class="main">
 
-  <!-- Main Content -->
-  <div class="main-content">
+  <!-- Left: RFQ Table -->
+  <div class="main-left">
+    <div class="section-header">
+      RFQ Feed
+      <span class="section-count" id="rfqCount">Loading...</span>
+    </div>
+    <div class="rfq-table-wrap">
+      <table id="rfqTable">
+        <thead>
+          <tr>
+            <th>Time</th>
+            <th>Category</th>
+            <th>Market Ticker</th>
+            <th>Event</th>
+            <th>Legs</th>
+            <th>Contracts</th>
+            <th>Target Cost</th>
+            <th>Status</th>
+          </tr>
+        </thead>
+        <tbody id="rfqTableBody">
+          <tr><td colspan="8" class="empty-state">Loading RFQ data...</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- Right: Charts + Categories -->
+  <div class="main-right">
+
+    <!-- Summary Stats -->
+    <div class="panel-section">
+      <div class="section-header">Today's Summary</div>
+      <div class="summary-grid">
+        <div class="summary-cell">
+          <span class="stat-label">Total RFQs</span>
+          <span class="stat-value" id="sumRfqs">--</span>
+        </div>
+        <div class="summary-cell">
+          <span class="stat-label">Avg Legs</span>
+          <span class="stat-value" id="sumAvgLegs">--</span>
+        </div>
+      </div>
+    </div>
 
     <!-- RFQ Volume Chart -->
-    <div class="chart-row">
-      <div class="chart-header">RFQ Volume (Last 24 Hours)</div>
+    <div class="panel-section">
+      <div class="section-header">RFQ Volume (24h)</div>
       <div class="chart-container">
         <canvas id="volumeChart"></canvas>
       </div>
     </div>
 
-    <!-- RFQ Table -->
-    <div class="table-section">
-      <div class="table-header">
-        <div class="table-header-left">Recent RFQs <span id="rfqCount" style="color:var(--text-muted);font-weight:400;margin-left:6px"></span></div>
-        <div class="table-header-right">Showing up to 500 rows</div>
+    <!-- Category Breakdown -->
+    <div class="panel-section" style="flex:1;overflow:hidden;display:flex;flex-direction:column">
+      <div class="section-header">
+        Categories
+        <span class="section-count" id="catCount"></span>
       </div>
-      <div class="table-wrap">
-        <table>
-          <thead>
-            <tr>
-              <th>Time</th>
-              <th>Category</th>
-              <th>Ticker</th>
-              <th>Event</th>
-              <th>Legs</th>
-              <th>Contracts</th>
-              <th>Target Cost</th>
-              <th>Status</th>
-            </tr>
-          </thead>
-          <tbody id="rfqTableBody">
-            <tr><td colspan="8" class="empty-state">Loading...</td></tr>
-          </tbody>
-        </table>
+      <div class="categories-list" id="categoriesList">
+        <div class="empty-state">Loading...</div>
       </div>
     </div>
 
   </div>
-
-  <!-- Sidebar -->
-  <div class="sidebar">
-    <div class="sidebar-section">
-      <div class="sidebar-title">RFQ Breakdown</div>
-      <div class="donut-wrap">
-        <canvas id="categoryChart"></canvas>
-      </div>
-      <div id="categoryList"></div>
-    </div>
-    <div class="sidebar-section">
-      <div class="sidebar-title">Stats</div>
-      <div class="sidebar-stat">
-        <span class="sidebar-stat-label">Avg Legs / RFQ</span>
-        <span class="sidebar-stat-value" id="avgLegs">--</span>
-      </div>
-      <div class="sidebar-stat">
-        <span class="sidebar-stat-label">Total RFQs Today</span>
-        <span class="sidebar-stat-value" id="totalRfqsSidebar">--</span>
-      </div>
-    </div>
-    <div class="sidebar-section">
-      <div class="sidebar-title">Most Active Categories</div>
-      <div id="topCategories"></div>
-    </div>
-  </div>
-
 </div>
-
-<!-- Footer -->
-<div class="footer">
-  KalshiMM v1.0 | <span id="footerMode">Paper Mode</span> | <span id="footerEnv">Connected to Demo</span>
-</div>
-
-<!-- Legs Detail Tooltip (single shared element) -->
-<div class="legs-tooltip" id="legsTooltip"></div>
 
 <script>
   let volumeChart = null;
-  let categoryChart = null;
 
-  // ── Format helpers ──
+  // ── Helpers ──
 
   function fmt$(v) {
     if (v == null) return '--';
@@ -597,33 +511,34 @@
     return (n >= 0 ? '+' : '') + '$' + Math.abs(n).toFixed(2);
   }
 
-  function fmtTimeAgo(iso) {
+  function fmtUptime(ms) {
+    if (!ms) return '--';
+    const s = Math.floor(ms / 1000);
+    const h = Math.floor(s / 3600);
+    const m = Math.floor((s % 3600) / 60);
+    if (h > 0) return h + 'h ' + m + 'm';
+    return m + 'm';
+  }
+
+  function timeAgo(iso) {
     if (!iso) return '--';
+    const d = new Date(iso);
     const now = Date.now();
-    const then = new Date(iso).getTime();
-    const diff = Math.max(0, now - then);
+    const diff = now - d.getTime();
+    if (diff < 0) return 'just now';
     const sec = Math.floor(diff / 1000);
     if (sec < 60) return sec + 's ago';
     const min = Math.floor(sec / 60);
     if (min < 60) return min + 'm ago';
     const hr = Math.floor(min / 60);
-    if (hr < 24) return hr + 'h ago';
-    const days = Math.floor(hr / 24);
-    return days + 'd ago';
+    if (hr < 24) return hr + 'h ' + (min % 60) + 'm ago';
+    return Math.floor(hr / 24) + 'd ago';
   }
 
-  function fmtTime(iso) {
-    if (!iso) return '--';
-    const d = new Date(iso);
-    return d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
-  }
-
-  function fmtUptime(ms) {
-    const sec = Math.floor(ms / 1000);
-    const h = Math.floor(sec / 3600);
-    const m = Math.floor((sec % 3600) / 60);
-    if (h > 0) return h + 'h ' + m + 'm';
-    return m + 'm';
+  function timeAgoClass(iso) {
+    if (!iso) return 'time-ago';
+    const diff = Date.now() - new Date(iso).getTime();
+    return diff < 120000 ? 'time-recent' : 'time-ago';
   }
 
   function pnlClass(v) {
@@ -634,67 +549,59 @@
   }
 
   function parseCategory(ticker) {
-    if (!ticker) return 'Unknown';
+    if (!ticker) return { label: 'Unknown', cls: 'cat-other' };
     const t = ticker.toUpperCase();
-    if (t.startsWith('KXMVE-') || t.includes('CROSS')) return 'Cross-Category';
+
+    if (t.startsWith('KXMVE') || t.includes('CROSS')) return { label: 'Cross-Event', cls: 'cat-cross' };
+
     if (t.startsWith('KX')) {
-      if (t.includes('NBA')) return 'NBA Multi-Game';
-      if (t.includes('NFL')) return 'NFL Multi-Game';
-      if (t.includes('MLB')) return 'MLB Multi-Game';
-      if (t.includes('NHL')) return 'NHL Multi-Game';
-      if (t.includes('SOCCER') || t.includes('MLS') || t.includes('EPL')) return 'Soccer Multi-Game';
-      if (t.includes('NCAAB') || t.includes('CBB')) return 'NCAAB Multi-Game';
-      if (t.includes('NCAAF') || t.includes('CFB')) return 'NCAAF Multi-Game';
-      return 'Multi-Game Combo';
+      if (t.includes('NBA')) return { label: 'NBA Multi', cls: 'cat-nba' };
+      if (t.includes('NFL')) return { label: 'NFL Multi', cls: 'cat-nfl' };
+      if (t.includes('MLB')) return { label: 'MLB Multi', cls: 'cat-mlb' };
+      if (t.includes('NHL')) return { label: 'NHL Multi', cls: 'cat-nhl' };
+      if (t.includes('SOCCER') || t.includes('MLS') || t.includes('EPL')) return { label: 'Soccer Multi', cls: 'cat-soccer' };
+      if (t.includes('NCAAB') || t.includes('CBB')) return { label: 'NCAAB Multi', cls: 'cat-ncaab' };
+      if (t.includes('NCAAF') || t.includes('CFB')) return { label: 'NCAAF Multi', cls: 'cat-ncaaf' };
+      return { label: 'Multi-Game', cls: 'cat-multi' };
     }
-    if (t.includes('NBA')) return 'NBA Game';
-    if (t.includes('NFL')) return 'NFL Game';
-    if (t.includes('MLB')) return 'MLB Game';
-    if (t.includes('NHL')) return 'NHL Game';
-    if (t.includes('SOCCER') || t.includes('MLS') || t.includes('EPL')) return 'Soccer';
-    if (t.includes('NCAAB') || t.includes('CBB')) return 'NCAAB';
-    if (t.includes('NCAAF') || t.includes('CFB')) return 'NCAAF';
-    if (t.includes('PRES') || t.includes('ELECT') || t.includes('GOV')) return 'Politics';
-    if (t.includes('CPI') || t.includes('GDP') || t.includes('ECON') || t.includes('FED')) return 'Economics';
-    if (t.includes('WEATHER') || t.includes('TEMP')) return 'Weather';
-    if (t.includes('CRYPTO') || t.includes('BTC') || t.includes('ETH')) return 'Crypto';
-    return 'Other';
+
+    if (t.includes('NBA')) return { label: 'NBA', cls: 'cat-nba' };
+    if (t.includes('NFL')) return { label: 'NFL', cls: 'cat-nfl' };
+    if (t.includes('MLB')) return { label: 'MLB', cls: 'cat-mlb' };
+    if (t.includes('NHL')) return { label: 'NHL', cls: 'cat-nhl' };
+    if (t.includes('SOCCER') || t.includes('MLS') || t.includes('EPL')) return { label: 'Soccer', cls: 'cat-soccer' };
+    if (t.includes('NCAAB') || t.includes('CBB')) return { label: 'NCAAB', cls: 'cat-ncaab' };
+    if (t.includes('NCAAF') || t.includes('CFB')) return { label: 'NCAAF', cls: 'cat-ncaaf' };
+
+    if (t.includes('PRES') || t.includes('ELECT') || t.includes('GOV')) return { label: 'Politics', cls: 'cat-politics' };
+    if (t.includes('CRYPTO') || t.includes('BTC') || t.includes('ETH')) return { label: 'Crypto', cls: 'cat-crypto' };
+
+    return { label: 'Other', cls: 'cat-other' };
   }
 
-  function parseLegsSummary(legsJson) {
-    if (!legsJson) return null;
+  function parseLegs(legsJson) {
+    if (!legsJson) return [];
     try {
-      const legs = JSON.parse(legsJson);
-      if (!Array.isArray(legs)) return null;
-      return legs.map((leg, i) => {
-        const ticker = leg.market_ticker || leg.ticker || leg.marketTicker || '?';
-        const side = leg.side || leg.direction || '?';
-        return 'L' + (i + 1) + ': ' + ticker + ' (' + side + ')';
-      });
-    } catch { return null; }
+      const legs = typeof legsJson === 'string' ? JSON.parse(legsJson) : legsJson;
+      return Array.isArray(legs) ? legs : [];
+    } catch { return []; }
   }
 
-  const CATEGORY_COLORS = [
-    '#4c7cf5', '#22c55e', '#eab308', '#ef4444', '#a78bfa',
-    '#06b6d4', '#f97316', '#ec4899', '#64748b', '#84cc16',
-    '#14b8a6', '#f43f5e'
-  ];
-
-  // ── Fetch helper ──
   async function fetchJSON(url) {
     const res = await fetch(url);
-    if (!res.ok) throw new Error('HTTP ' + res.status);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
     return res.json();
   }
 
-  // ── Update stats bar ──
+  // ── Update Stats ──
+
   async function updateStats() {
     try {
       const data = await fetchJSON('/api/stats');
 
       document.getElementById('statRfqs').textContent = data.rfqs_seen.toLocaleString();
-      document.getElementById('statQuotes').textContent = data.quotes_submitted.toLocaleString();
-      document.getElementById('statFills').textContent = data.quotes_filled.toLocaleString();
+      document.getElementById('statQuotes').textContent = data.quotes_submitted;
+      document.getElementById('statFills').textContent = data.quotes_filled;
 
       const pnlEl = document.getElementById('statPnl');
       pnlEl.textContent = fmt$(data.today_pnl);
@@ -717,99 +624,102 @@
 
       const envBadge = document.getElementById('envBadge');
       envBadge.textContent = data.env.toUpperCase();
-      envBadge.className = 'badge badge-' + (data.env === 'production' ? 'production' : 'demo');
+      envBadge.className = 'badge badge-' + (data.env === 'production' ? 'prod' : 'demo');
 
-      document.getElementById('killBadge').style.display = data.kill_switch ? 'inline' : 'none';
-
-      // Footer
-      document.getElementById('footerMode').textContent = data.paper_mode ? 'Paper Mode' : 'Live Mode';
-      document.getElementById('footerEnv').textContent = 'Connected to ' + (data.env === 'production' ? 'Production' : 'Demo');
+      const killBadge = document.getElementById('killBadge');
+      killBadge.style.display = data.kill_switch ? 'inline' : 'none';
     } catch (err) {
       console.error('Failed to fetch stats:', err);
     }
   }
 
-  // ── Update RFQ table ──
+  // ── Update RFQ Table ──
+
   async function updateRFQs() {
     try {
       const rfqs = await fetchJSON('/api/rfqs');
       const tbody = document.getElementById('rfqTableBody');
-      document.getElementById('rfqCount').textContent = '(' + rfqs.length + ')';
+      document.getElementById('rfqCount').textContent = rfqs.length + ' RFQs loaded';
 
       if (rfqs.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="8" class="empty-state">No RFQs captured yet</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="8" class="empty-state">No RFQs received yet. Waiting for market activity...</td></tr>';
         return;
       }
 
-      tbody.innerHTML = rfqs.map(r => {
+      let html = '';
+      rfqs.forEach((r, i) => {
         const cat = parseCategory(r.market_ticker);
-        const isHighLegs = (r.num_legs || 0) > 5;
-        const contracts = r.contracts_requested ? Number(r.contracts_requested) : 0;
-        const targetCost = r.target_cost_dollars ? '$' + Number(r.target_cost_dollars).toFixed(2) : '--';
-        const legsInfo = parseLegsSummary(r.legs_json);
-        const legsHtml = legsInfo
-          ? '<span class="legs-badge">' + (r.num_legs || '?') +
-            ' <span class="legs-detail-btn" data-legs=\'' + escapeAttr(JSON.stringify(legsInfo)) + '\'>i</span></span>'
-          : (r.num_legs || '--');
+        const legs = parseLegs(r.legs_json);
+        const numLegs = r.num_legs || legs.length || 0;
+        const isHighLegs = numLegs >= 5;
+        const cost = r.target_cost_dollars;
+        const costStr = cost && Number(cost) > 0 ? '$' + Number(cost).toFixed(2) : '--';
+        const contracts = r.contracts_requested && Number(r.contracts_requested) > 0
+          ? Number(r.contracts_requested).toFixed(0)
+          : '--';
 
-        return '<tr class="' + (isHighLegs ? 'high-legs' : '') + '">' +
-          '<td class="mono" title="' + fmtTime(r.received_at) + '">' + fmtTimeAgo(r.received_at) + '</td>' +
-          '<td class="text-secondary" style="font-size:11px">' + cat + '</td>' +
-          '<td class="mono">' + (r.market_ticker || '--') + '</td>' +
-          '<td class="mono text-muted" style="max-width:140px;overflow:hidden;text-overflow:ellipsis">' + (r.event_ticker || '--') + '</td>' +
-          '<td class="legs-cell">' + legsHtml + '</td>' +
-          '<td class="mono">' + contracts + '</td>' +
-          '<td class="mono">' + targetCost + '</td>' +
-          '<td><span class="status ' + (r.quoted ? 'status-quoted' : 'status-skipped') + '">' + (r.quoted ? 'Quoted' : 'Observed') + '</span></td>' +
-          '</tr>';
-      }).join('');
+        html += `<tr style="${isHighLegs ? 'background:rgba(234,179,8,0.04)' : ''}">
+          <td class="mono ${timeAgoClass(r.received_at)}">${timeAgo(r.received_at)}</td>
+          <td><span class="cat-tag ${cat.cls}">${cat.label}</span></td>
+          <td class="mono" style="max-width:200px;overflow:hidden;text-overflow:ellipsis" title="${r.market_ticker || ''}">${r.market_ticker || '--'}</td>
+          <td class="mono" style="color:var(--text-secondary);max-width:160px;overflow:hidden;text-overflow:ellipsis" title="${r.event_ticker || ''}">${r.event_ticker || '--'}</td>
+          <td class="${isHighLegs ? 'legs-high' : ''}">
+            ${numLegs > 0 && legs.length > 0
+              ? `<a class="legs-toggle" onclick="toggleLegs(event, 'legs-${i}')">${numLegs} legs</a>`
+              : (numLegs || '--')}
+          </td>
+          <td class="mono">${contracts}</td>
+          <td class="mono cost-val">${costStr}</td>
+          <td><span style="color:${r.quoted ? 'var(--accent-blue)' : 'var(--text-muted)'};font-size:11px">${r.quoted ? 'Quoted' : 'Observed'}</span></td>
+        </tr>`;
+
+        // Expandable legs detail row
+        if (legs.length > 0) {
+          html += `<tr id="legs-${i}" class="legs-detail">
+            <td colspan="8" style="padding:8px 12px 8px 48px;background:var(--bg-card)">
+              ${legs.map(l => {
+                const side = (l.side || '').toLowerCase();
+                const sideClass = side === 'yes' ? 'leg-side-yes' : 'leg-side-no';
+                const ticker = l.market_ticker || '?';
+                return `<div class="leg-item">
+                  <span class="${sideClass}" style="width:30px">${(side || '?').toUpperCase()}</span>
+                  <span style="color:var(--text-primary)">${ticker}</span>
+                </div>`;
+              }).join('')}
+            </td>
+          </tr>`;
+        }
+      });
+
+      tbody.innerHTML = html;
     } catch (err) {
       console.error('Failed to fetch RFQs:', err);
     }
   }
 
-  function escapeAttr(str) {
-    return str.replace(/&/g, '&amp;').replace(/'/g, '&#39;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  function toggleLegs(event, id) {
+    event.preventDefault();
+    const row = document.getElementById(id);
+    if (row) {
+      row.style.display = row.style.display === 'table-row' ? 'none' : 'table-row';
+    }
   }
 
-  // ── Legs tooltip ──
-  document.addEventListener('mouseover', function(e) {
-    const btn = e.target.closest('.legs-detail-btn');
-    const tooltip = document.getElementById('legsTooltip');
-    if (!btn) {
-      tooltip.classList.remove('visible');
-      return;
-    }
-    try {
-      const legs = JSON.parse(btn.dataset.legs);
-      tooltip.innerHTML =
-        '<div class="legs-tooltip-title">Legs Detail</div>' +
-        legs.map(l => '<div class="leg-item">' + l + '</div>').join('');
-      const rect = btn.getBoundingClientRect();
-      tooltip.style.left = Math.min(rect.left, window.innerWidth - 440) + 'px';
-      tooltip.style.top = (rect.bottom + 6) + 'px';
-      tooltip.classList.add('visible');
-    } catch {}
-  });
+  // ── Update Volume Chart ──
 
-  document.addEventListener('mouseout', function(e) {
-    if (e.target.closest('.legs-detail-btn')) {
-      document.getElementById('legsTooltip').classList.remove('visible');
-    }
-  });
-
-  // ── RFQ Volume Chart ──
   async function updateVolumeChart() {
     try {
       const data = await fetchJSON('/api/rfq-volume');
+      if (!data || data.length === 0) return;
+
       const labels = data.map(d => d.label);
-      const counts = data.map(d => d.count);
+      const values = data.map(d => d.count);
 
       const ctx = document.getElementById('volumeChart').getContext('2d');
 
       if (volumeChart) {
         volumeChart.data.labels = labels;
-        volumeChart.data.datasets[0].data = counts;
+        volumeChart.data.datasets[0].data = values;
         volumeChart.update('none');
       } else {
         volumeChart = new Chart(ctx, {
@@ -817,13 +727,11 @@
           data: {
             labels,
             datasets: [{
-              data: counts,
-              backgroundColor: counts.map(c => c > 0 ? 'rgba(76, 124, 245, 0.6)' : 'rgba(76, 124, 245, 0.15)'),
-              borderColor: 'rgba(76, 124, 245, 0.8)',
+              data: values,
+              backgroundColor: values.map(v => v > 0 ? 'rgba(59,130,246,0.5)' : 'rgba(59,130,246,0.1)'),
+              borderColor: 'rgba(59,130,246,0.8)',
               borderWidth: 1,
               borderRadius: 2,
-              barPercentage: 0.85,
-              categoryPercentage: 0.9,
             }]
           },
           options: {
@@ -832,123 +740,93 @@
             plugins: {
               legend: { display: false },
               tooltip: {
-                backgroundColor: '#161923',
-                borderColor: '#252838',
+                backgroundColor: '#161921',
+                borderColor: '#2a3050',
                 borderWidth: 1,
-                titleColor: '#e2e4ec',
-                bodyColor: '#7c8198',
+                titleColor: '#e8eaf0',
+                bodyColor: '#7c8190',
                 padding: 8,
-                cornerRadius: 4,
-                titleFont: { family: 'Inter', size: 11 },
-                bodyFont: { family: 'JetBrains Mono', size: 11 },
+                displayColors: false,
                 callbacks: {
-                  label: function(ctx) { return ctx.raw + ' RFQs'; }
+                  label: ctx => ctx.raw + ' RFQs'
                 }
               }
             },
             scales: {
               x: {
                 grid: { display: false },
-                ticks: { color: '#4e5268', font: { family: 'JetBrains Mono', size: 9 }, maxRotation: 0, maxTicksLimit: 12 },
-                border: { color: '#252838' }
+                ticks: { color: '#4a4f62', font: { size: 9 }, maxRotation: 0, maxTicksLimit: 8 },
               },
               y: {
-                grid: { color: 'rgba(37, 40, 56, 0.5)' },
-                ticks: { color: '#4e5268', font: { family: 'JetBrains Mono', size: 9 }, maxTicksLimit: 5 },
-                border: { display: false },
-                beginAtZero: true
+                grid: { color: 'rgba(30,34,48,0.8)' },
+                ticks: { color: '#4a4f62', font: { size: 9 }, maxTicksLimit: 5 },
+                beginAtZero: true,
               }
             }
           }
         });
       }
     } catch (err) {
-      console.error('Failed to fetch RFQ volume:', err);
+      console.error('Failed to fetch volume:', err);
     }
   }
 
-  // ── Category Sidebar ──
+  // ── Update Categories ──
+
   async function updateCategories() {
     try {
       const data = await fetchJSON('/api/rfq-categories');
+      const container = document.getElementById('categoriesList');
+      const countEl = document.getElementById('catCount');
 
-      document.getElementById('avgLegs').textContent = data.avg_legs.toFixed(1);
-      document.getElementById('totalRfqsSidebar').textContent = data.total_rfqs.toLocaleString();
+      document.getElementById('sumRfqs').textContent = (data.total_rfqs || 0).toLocaleString();
+      document.getElementById('sumAvgLegs').textContent = data.avg_legs ? data.avg_legs.toFixed(1) : '--';
 
-      const cats = data.categories;
+      const cats = data.categories || {};
       const entries = Object.entries(cats).sort((a, b) => b[1] - a[1]);
       const maxCount = entries.length > 0 ? entries[0][1] : 1;
 
-      // Donut chart
-      const labels = entries.map(e => e[0]);
-      const values = entries.map(e => e[1]);
-      const colors = entries.map((_, i) => CATEGORY_COLORS[i % CATEGORY_COLORS.length]);
+      countEl.textContent = entries.length + ' types';
 
-      const ctx = document.getElementById('categoryChart').getContext('2d');
-      if (categoryChart) {
-        categoryChart.data.labels = labels;
-        categoryChart.data.datasets[0].data = values;
-        categoryChart.data.datasets[0].backgroundColor = colors;
-        categoryChart.update('none');
-      } else {
-        categoryChart = new Chart(ctx, {
-          type: 'doughnut',
-          data: {
-            labels,
-            datasets: [{
-              data: values,
-              backgroundColor: colors,
-              borderColor: '#161923',
-              borderWidth: 2,
-            }]
-          },
-          options: {
-            responsive: true,
-            maintainAspectRatio: true,
-            cutout: '65%',
-            plugins: {
-              legend: { display: false },
-              tooltip: {
-                backgroundColor: '#161923',
-                borderColor: '#252838',
-                borderWidth: 1,
-                titleColor: '#e2e4ec',
-                bodyColor: '#7c8198',
-                padding: 8,
-                titleFont: { family: 'Inter', size: 11 },
-                bodyFont: { family: 'Inter', size: 11 },
-              }
-            }
-          }
-        });
+      if (entries.length === 0) {
+        container.innerHTML = '<div class="empty-state">No data yet</div>';
+        return;
       }
 
-      // Category list
-      const listHtml = entries.slice(0, 8).map((e, i) => {
-        const pct = maxCount > 0 ? (e[1] / maxCount * 100) : 0;
-        return '<div class="category-row">' +
-          '<span class="category-name">' + e[0] + '</span>' +
-          '<span class="category-count">' + e[1] + '</span>' +
-          '</div>' +
-          '<div class="category-bar-wrap"><div class="category-bar" style="width:' + pct + '%;background:' + CATEGORY_COLORS[i % CATEGORY_COLORS.length] + '"></div></div>';
+      container.innerHTML = entries.map(([name, count]) => {
+        const pct = (count / maxCount * 100).toFixed(0);
+        const catInfo = getCatColor(name);
+        return `<div class="cat-row">
+          <div style="flex:1">
+            <div class="cat-name">${name}</div>
+            <div class="cat-bar" style="width:${pct}%;background:${catInfo.color}"></div>
+          </div>
+          <span class="cat-count">${count}</span>
+        </div>`;
       }).join('');
-
-      document.getElementById('categoryList').innerHTML = listHtml;
-
-      // Top categories
-      const topHtml = entries.slice(0, 5).map((e, i) =>
-        '<div class="category-row">' +
-        '<span class="category-name">' + (i + 1) + '. ' + e[0] + '</span>' +
-        '<span class="category-count">' + e[1] + '</span>' +
-        '</div>'
-      ).join('');
-      document.getElementById('topCategories').innerHTML = topHtml || '<div style="color:var(--text-muted);font-size:11px">No data yet</div>';
     } catch (err) {
       console.error('Failed to fetch categories:', err);
     }
   }
 
+  function getCatColor(name) {
+    const n = name.toLowerCase();
+    if (n.includes('nba')) return { color: '#f97316' };
+    if (n.includes('nfl')) return { color: '#3b82f6' };
+    if (n.includes('mlb')) return { color: '#ef4444' };
+    if (n.includes('nhl')) return { color: '#06b6d4' };
+    if (n.includes('ncaab')) return { color: '#a855f7' };
+    if (n.includes('ncaaf')) return { color: '#c084fc' };
+    if (n.includes('soccer')) return { color: '#22c55e' };
+    if (n.includes('politic')) return { color: '#eab308' };
+    if (n.includes('crypto')) return { color: '#fb923c' };
+    if (n.includes('cross')) return { color: '#c084fc' };
+    if (n.includes('multi')) return { color: '#60a5fa' };
+    return { color: '#4a4f62' };
+  }
+
   // ── Refresh All ──
+
   async function refreshAll() {
     await Promise.all([
       updateStats(),
@@ -957,12 +835,11 @@
       updateCategories(),
     ]);
     document.getElementById('lastUpdate').textContent =
-      'Updated ' + new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
+      new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
   }
 
-  // Initial load + 30s auto-refresh
   refreshAll();
-  setInterval(refreshAll, 30000);
+  setInterval(refreshAll, 15000);
 </script>
 
 </body>
