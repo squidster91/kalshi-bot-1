@@ -53,8 +53,7 @@ src/
 ├── risk/positions.ts     # Position tracking
 ├── risk/limits.ts        # Risk limit enforcement
 ├── risk/inventory.ts     # Inventory skew
-├── data/nba-stats.ts     # NBA API integration
-├── data/correlation-builder.ts # Correlation calibration
+├── data/correlation-builder.ts # Correlation calibration from price snapshots
 ├── db/schema.ts          # SQLite schema
 └── db/queries.ts         # Database operations
 ```

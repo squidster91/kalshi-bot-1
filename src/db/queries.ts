@@ -266,6 +266,37 @@ export function getAllCorrelations(): Array<{
     .all() as Array<{ leg_type_a: string; leg_type_b: string; correlation: number }>;
 }
 
+// ── Price Snapshots ──
+
+export function insertPriceSnapshot(ticker: string, midPrice: number): void {
+  const db = getDb();
+  db.prepare(`
+    INSERT INTO price_snapshots (ticker, mid_price, timestamp)
+    VALUES (?, ?, ?)
+  `).run(ticker, midPrice, new Date().toISOString());
+}
+
+export function getPriceSnapshots(
+  ticker: string,
+  since: string
+): Array<{ mid_price: number; timestamp: string }> {
+  const db = getDb();
+  return db.prepare(`
+    SELECT mid_price, timestamp FROM price_snapshots
+    WHERE ticker = ? AND timestamp >= ?
+    ORDER BY timestamp ASC
+  `).all(ticker, since) as Array<{ mid_price: number; timestamp: string }>;
+}
+
+export function getSnapshotTickers(since: string): string[] {
+  const db = getDb();
+  const rows = db.prepare(`
+    SELECT DISTINCT ticker FROM price_snapshots
+    WHERE timestamp >= ?
+  `).all(since) as Array<{ ticker: string }>;
+  return rows.map((r) => r.ticker);
+}
+
 // ── Daily Summary ──
 
 export function getTodayStats(): {

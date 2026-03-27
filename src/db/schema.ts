@@ -105,10 +105,18 @@ function initSchema(db: Database.Database): void {
       combos_lost INTEGER DEFAULT 0
     );
 
+    CREATE TABLE IF NOT EXISTS price_snapshots (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      ticker TEXT NOT NULL,
+      mid_price REAL NOT NULL,
+      timestamp TEXT NOT NULL
+    );
+
     CREATE INDEX IF NOT EXISTS idx_rfqs_received_at ON rfqs_seen(received_at);
     CREATE INDEX IF NOT EXISTS idx_quotes_status ON quotes_submitted(status);
     CREATE INDEX IF NOT EXISTS idx_pnl_timestamp ON pnl_log(timestamp);
     CREATE INDEX IF NOT EXISTS idx_positions_event ON positions(event_ticker);
+    CREATE INDEX IF NOT EXISTS idx_price_snapshots_ticker_ts ON price_snapshots(ticker, timestamp);
   `);
 }
 

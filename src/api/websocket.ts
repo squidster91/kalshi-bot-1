@@ -3,6 +3,7 @@ import { config } from '../config';
 import { getAuthHeaders } from '../auth';
 import { logger } from '../logger';
 import { EventEmitter } from 'events';
+import { insertPriceSnapshot } from '../db/queries';
 
 export interface WSMessage {
   id?: number;
@@ -297,6 +298,33 @@ export class OrderbookManager extends EventEmitter {
     const state = this.orderbooks.get(ticker);
     if (!state) return true;
     return Date.now() - state.lastUpdate > thresholdMs;
+  }
+
+  /**
+   * Return all current mid-prices as a Map<ticker, midPrice>.
+   */
+  getAllMidPrices(): Map<string, number> {
+    const prices = new Map<string, number>();
+    for (const [ticker, state] of this.orderbooks) {
+      prices.set(ticker, state.midPrice);
+    }
+    return prices;
+  }
+
+  /**
+   * Snapshot all current mid-prices to the database for correlation analysis.
+   */
+  snapshotPrices(): void {
+    const prices = this.getAllMidPrices();
+    let count = 0;
+    for (const [ticker, midPrice] of prices) {
+      // Skip degenerate prices (0 or 1 indicate no real orderbook)
+      if (midPrice > 0.01 && midPrice < 0.99) {
+        insertPriceSnapshot(ticker, midPrice);
+        count++;
+      }
+    }
+    logger.info(`Snapshotted ${count} mid-prices to database`);
   }
 
   close(): void {

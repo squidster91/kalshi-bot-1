@@ -21,6 +21,8 @@ class KalshiMMBot {
   private confirmer: Confirmer;
   private riskCheckInterval: ReturnType<typeof setInterval> | null = null;
   private dailySummaryInterval: ReturnType<typeof setInterval> | null = null;
+  private snapshotInterval: ReturnType<typeof setInterval> | null = null;
+  private correlationInterval: ReturnType<typeof setInterval> | null = null;
   private shuttingDown = false;
 
   constructor() {
@@ -44,7 +46,7 @@ class KalshiMMBot {
     // Initialize database
     getDb();
 
-    // Build correlation matrix (uses defaults if NBA API fails)
+    // Build correlation matrix (uses defaults if insufficient snapshot data)
     await buildCorrelationMatrix();
 
     // Check balance (validates API credentials)
@@ -193,6 +195,24 @@ class KalshiMMBot {
       }
     }, 60_000);
 
+    // Snapshot mid-prices every 5 minutes for correlation analysis
+    this.snapshotInterval = setInterval(() => {
+      try {
+        this.orderbookManager.snapshotPrices();
+      } catch (err) {
+        logger.error('Failed to snapshot prices', { error: String(err) });
+      }
+    }, 5 * 60_000);
+
+    // Recalculate correlations from snapshots every hour
+    this.correlationInterval = setInterval(async () => {
+      try {
+        await buildCorrelationMatrix();
+      } catch (err) {
+        logger.error('Failed to rebuild correlation matrix', { error: String(err) });
+      }
+    }, 60 * 60_000);
+
     // Daily summary at the end of each day (check every 5 minutes)
     this.dailySummaryInterval = setInterval(async () => {
       const now = new Date();
@@ -214,6 +234,8 @@ class KalshiMMBot {
       // Stop periodic tasks
       if (this.riskCheckInterval) clearInterval(this.riskCheckInterval);
       if (this.dailySummaryInterval) clearInterval(this.dailySummaryInterval);
+      if (this.snapshotInterval) clearInterval(this.snapshotInterval);
+      if (this.correlationInterval) clearInterval(this.correlationInterval);
 
       // Close WebSocket connections
       this.orderbookManager.close();
@@ -247,6 +269,8 @@ class KalshiMMBot {
     this.shuttingDown = true;
     if (this.riskCheckInterval) clearInterval(this.riskCheckInterval);
     if (this.dailySummaryInterval) clearInterval(this.dailySummaryInterval);
+    if (this.snapshotInterval) clearInterval(this.snapshotInterval);
+    if (this.correlationInterval) clearInterval(this.correlationInterval);
     this.orderbookManager.close();
     this.commsManager.close();
     closeDb();
