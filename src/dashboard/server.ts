@@ -13,7 +13,7 @@ const PORT = 3000;
 const serverStartTime = Date.now();
 
 // Filter stats provider — set by index.ts to expose listener stats
-type FilterStats = { totalSeen: number; botFiltered: number; playerFiltered: number; budgetModeFiltered: number; dupeLegFiltered: number; knownBots: number };
+type FilterStats = { totalSeen: number; botFiltered: number; playerFiltered: number; knownBots: number };
 let filterStatsProvider: (() => FilterStats) | null = null;
 export function setFilterStatsProvider(fn: () => FilterStats): void {
   filterStatsProvider = fn;
@@ -295,20 +295,6 @@ app.get('/api/rfq-categories', (_req, res) => {
 
     const teamOnly = total - hasPlayers;
 
-    // Count $10 budget-mode RFQs (team-only, $10 exact + 0 contracts)
-    let budget10 = 0;
-    try {
-      const b10Row = db.prepare(`
-        SELECT COUNT(*) as cnt FROM rfqs_seen
-        WHERE received_at LIKE ? || '%' AND has_player_props = 0
-          AND CAST(target_cost_dollars AS REAL) = 10
-          AND (contracts_requested = '0' OR contracts_requested IS NULL OR contracts_requested = '')
-      `).get(today) as { cnt: number } | undefined;
-      budget10 = b10Row?.cnt || 0;
-    } catch { /* ok */ }
-
-    const afterAllFilters = teamOnly - budget10;
-
     res.json({
       categories,
       avg_legs: teamOnly > 0 ? totalLegs / total : 0,
@@ -316,8 +302,6 @@ app.get('/api/rfq-categories', (_req, res) => {
       team_only: teamOnly,
       has_players: hasPlayers,
       known_bots: knownBots,
-      budget_10_filtered: budget10,
-      after_all_filters: afterAllFilters,
     });
   } catch (err) {
     logger.error('Dashboard /api/rfq-categories error', { error: String(err) });
@@ -563,7 +547,7 @@ app.get('/api/legs-distribution', (_req, res) => {
 // ── API: Live filter stats ──
 app.get('/api/filter-stats', (_req, res) => {
   if (!filterStatsProvider) {
-    res.json({ totalSeen: 0, botFiltered: 0, playerFiltered: 0, budgetModeFiltered: 0, dupeLegFiltered: 0, knownBots: 0 });
+    res.json({ totalSeen: 0, botFiltered: 0, playerFiltered: 0, knownBots: 0 });
     return;
   }
   res.json(filterStatsProvider());

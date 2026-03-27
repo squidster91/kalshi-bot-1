@@ -190,6 +190,23 @@ function initSchema(db: Database.Database): void {
     }
     logger.info('Backfill complete', { updated });
   } catch { /* column already exists — no backfill needed */ }
+
+  // One-time migration: clear known_bots to rebuild with 10+ threshold
+  try {
+    const migrationKey = 'reset_bots_threshold_10';
+    const existing = db.prepare(`SELECT name FROM sqlite_master WHERE type='table' AND name='migrations'`).get();
+    if (!existing) {
+      db.exec(`CREATE TABLE migrations (key TEXT PRIMARY KEY, applied_at TEXT)`);
+    }
+    const applied = db.prepare(`SELECT key FROM migrations WHERE key = ?`).get(migrationKey);
+    if (!applied) {
+      db.exec(`DELETE FROM known_bots`);
+      db.prepare(`INSERT INTO migrations (key, applied_at) VALUES (?, ?)`).run(migrationKey, new Date().toISOString());
+      logger.info('Migration: cleared known_bots table for 10+ threshold rebuild');
+    }
+  } catch (err) {
+    logger.warn('Migration check failed', { error: String(err) });
+  }
 }
 
 export function closeDb(): void {
