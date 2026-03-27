@@ -470,12 +470,11 @@
             <th title="Explicit contract count requested by the buyer. '--' means the buyer specified a budget (Target Cost) instead and wants as many contracts as that budget buys.">Contracts</th>
             <th title="The dollar budget the buyer wants to spend. '--' means the buyer specified a contract quantity instead of a budget. When shown, this is total spend not per-contract price.">Target Cost</th>
             <th title="Naive fair value = product of each leg's mid-price (implied probability) from the orderbook at the time the RFQ arrived. Assumes independent legs.">Fair Value</th>
-            <th title="Edge = Target Cost minus Fair Value per contract. Only shown when actual contract qty is specified. Positive (green) = buyer overpaying = profitable for us.">Edge</th>
             <th title="'Observed' = we saw but didn't quote (paper mode). 'Quoted' = we submitted a price.">Status</th>
           </tr>
         </thead>
         <tbody id="rfqTableBody">
-          <tr><td colspan="10" class="empty-state">Loading RFQ data...</td></tr>
+          <tr><td colspan="9" class="empty-state">Loading RFQ data...</td></tr>
         </tbody>
       </table>
     </div>
@@ -696,11 +695,6 @@
         }
 
         const fvStr = fairValue !== null ? '$' + fairValue.toFixed(4) : '--';
-        const contractsNum = Number(r.contracts_requested) || 0;
-        // Only show edge when actual contract qty is specified — budget-mode ($10 total vs $0.008/contract) is not a fair comparison
-        const edge = (fairValue !== null && costNum > 0 && contractsNum > 0) ? costNum - fairValue : null;
-        const edgeStr = edge !== null ? ((edge >= 0 ? '+' : '') + (edge * 100).toFixed(1) + 'c') : '--';
-        const edgeCls = edge !== null ? (edge >= 0 ? 'color:var(--accent-green)' : 'color:var(--accent-red)') : 'color:var(--text-muted)';
 
         html += `<tr style="${isHighLegs ? 'background:rgba(234,179,8,0.04)' : ''}">
           <td class="mono ${timeAgoClass(r.received_at)}">${timeAgo(r.received_at)}</td>
@@ -715,7 +709,6 @@
           <td class="mono">${contracts}</td>
           <td class="mono cost-val">${costStr}</td>
           <td class="mono" style="color:var(--text-secondary)">${fvStr}</td>
-          <td class="mono" style="${edgeCls};font-weight:600">${edgeStr}</td>
           <td><span style="color:${r.quoted ? 'var(--accent-blue)' : 'var(--text-muted)'};font-size:11px">${r.quoted ? 'Quoted' : 'Observed'}</span></td>
         </tr>`;
 
