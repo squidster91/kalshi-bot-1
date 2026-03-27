@@ -498,10 +498,6 @@
 
   <!-- Left: RFQ Table -->
   <div class="main-left">
-    <div class="section-header">
-      RFQ Feed
-      <span class="section-count" id="rfqCount">Loading...</span>
-    </div>
     <div style="background:rgba(59,130,246,0.08);border:1px solid rgba(59,130,246,0.2);border-radius:6px;padding:6px 12px;margin-bottom:8px;font-size:11px;color:var(--text-secondary)">
       Filters active: <strong style="color:var(--accent-cyan)">Player-prop parlays removed</strong> (PTS/REB/AST/3PM/STL/BLK).
       <strong style="color:var(--accent-green)">Bot creators filtered</strong> (3+ RFQs/min, <span id="knownBotCount">--</span> historic bots).
@@ -858,8 +854,6 @@
     try {
       const rfqs = await fetchJSON('/api/rfqs');
       cachedRfqs = rfqs;
-      document.getElementById('rfqCount').textContent = rfqs.length + ' RFQs loaded';
-
       // Populate category filter dropdown
       const catSet = new Set();
       rfqs.forEach(r => catSet.add(parseCategory(r.market_ticker).label));
