@@ -148,7 +148,6 @@ function initSchema(db: Database.Database): void {
     );
 
     CREATE INDEX IF NOT EXISTS idx_rfqs_received_at ON rfqs_seen(received_at);
-    CREATE INDEX IF NOT EXISTS idx_rfqs_player_date ON rfqs_seen(has_player_props, received_at);
     CREATE INDEX IF NOT EXISTS idx_quotes_status ON quotes_submitted(status);
     CREATE INDEX IF NOT EXISTS idx_pnl_timestamp ON pnl_log(timestamp);
     CREATE INDEX IF NOT EXISTS idx_positions_event ON positions(event_ticker);
@@ -191,6 +190,11 @@ function initSchema(db: Database.Database): void {
     }
     logger.info('Backfill complete', { updated });
   } catch { /* column already exists — no backfill needed */ }
+
+  // Create index on has_player_props (after column is guaranteed to exist)
+  try {
+    db.exec(`CREATE INDEX IF NOT EXISTS idx_rfqs_player_date ON rfqs_seen(has_player_props, received_at)`);
+  } catch { /* index already exists */ }
 
   // One-time migration: clear known_bots to rebuild with 10+ threshold
   try {
