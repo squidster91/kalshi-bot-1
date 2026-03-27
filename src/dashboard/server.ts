@@ -555,6 +555,22 @@ app.get('/api/filter-stats', (_req, res) => {
   res.json(filterStatsProvider());
 });
 
+// ── API: Debug leg prices (temporary) ──
+app.get('/api/debug-prices', (_req, res) => {
+  try {
+    const db = getDb();
+    const rows = db.prepare(`
+      SELECT id, num_legs, leg_prices_snapshot, legs_json
+      FROM rfqs_seen
+      WHERE leg_prices_snapshot IS NOT NULL
+      ORDER BY rowid DESC LIMIT 5
+    `).all();
+    res.json(rows);
+  } catch (err) {
+    res.status(500).json({ error: String(err) });
+  }
+});
+
 export function startDashboard(): void {
   app.listen(PORT, () => {
     logger.info(`Dashboard server running at http://localhost:${PORT}`);
