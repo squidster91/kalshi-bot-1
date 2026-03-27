@@ -468,9 +468,9 @@
             <th title="The underlying event this RFQ belongs to">Event</th>
             <th title="Number of individual markets combined in this parlay">Legs</th>
             <th title="Explicit contract count requested by the buyer. '--' means the buyer specified a budget (Target Cost) instead and wants as many contracts as that budget buys.">Contracts</th>
-            <th title="The dollar amount the buyer is willing to spend per contract for this combo. This is what they'd pay us if we quoted and they accepted.">Target Cost</th>
+            <th title="The dollar budget the buyer wants to spend. '--' means the buyer specified a contract quantity instead of a budget. When shown, this is total spend not per-contract price.">Target Cost</th>
             <th title="Naive fair value = product of each leg's mid-price (implied probability) from the orderbook at the time the RFQ arrived. Assumes independent legs.">Fair Value</th>
-            <th title="Edge = Target Cost minus Fair Value. Positive (green) means the buyer is overpaying vs fair value = profitable for us to fill.">Edge</th>
+            <th title="Edge = Target Cost minus Fair Value per contract. Only shown when actual contract qty is specified. Positive (green) = buyer overpaying = profitable for us.">Edge</th>
             <th title="'Observed' = we saw but didn't quote (paper mode). 'Quoted' = we submitted a price.">Status</th>
           </tr>
         </thead>
@@ -696,7 +696,9 @@
         }
 
         const fvStr = fairValue !== null ? '$' + fairValue.toFixed(4) : '--';
-        const edge = (fairValue !== null && costNum > 0) ? costNum - fairValue : null;
+        const contractsNum = Number(r.contracts_requested) || 0;
+        // Only show edge when actual contract qty is specified — budget-mode ($10 total vs $0.008/contract) is not a fair comparison
+        const edge = (fairValue !== null && costNum > 0 && contractsNum > 0) ? costNum - fairValue : null;
         const edgeStr = edge !== null ? ((edge >= 0 ? '+' : '') + (edge * 100).toFixed(1) + 'c') : '--';
         const edgeCls = edge !== null ? (edge >= 0 ? 'color:var(--accent-green)' : 'color:var(--accent-red)') : 'color:var(--text-muted)';
 
