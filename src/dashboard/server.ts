@@ -258,23 +258,19 @@ app.get('/api/rfq-categories', (_req, res) => {
     let totalLegs = 0;
     let totalRfqs = 0;
 
-    const allRows = db.prepare(`
-      SELECT num_legs,
-        CASE WHEN legs_json LIKE '%PTS%' OR legs_json LIKE '%REB%' OR legs_json LIKE '%AST%'
-             OR legs_json LIKE '%3PM%' OR legs_json LIKE '%TPM%' OR legs_json LIKE '%STL%'
-             OR legs_json LIKE '%BLK%' THEN 1 ELSE 0 END as has_player
+    // Use pre-computed aggregates — no scanning legs_json
+    const aggRow = db.prepare(`
+      SELECT COUNT(*) as total,
+             SUM(num_legs) as total_legs,
+             SUM(CASE WHEN has_player_props = 1 THEN 1 ELSE 0 END) as has_players
       FROM rfqs_seen WHERE received_at LIKE ? || '%'
-    `).all(today) as Array<{ num_legs: number | null; has_player: number }>;
+    `).get(today) as { total: number; total_legs: number; has_players: number } | undefined;
 
-    let teamOnly = 0;
-    let hasPlayers = 0;
-
-    for (const r of allRows) {
-      totalRfqs++;
-      totalLegs += r.num_legs || 0;
-      if (r.has_player) hasPlayers++;
-      else teamOnly++;
-    }
+    totalRfqs = aggRow?.total || 0;
+    let totalLegsSum = aggRow?.total_legs || 0;
+    let hasPlayers = aggRow?.has_players || 0;
+    let teamOnly = totalRfqs - hasPlayers;
+    totalLegs = totalLegsSum;
 
     for (const row of rows) {
       const cat = parseCategory(row.market_ticker || '');

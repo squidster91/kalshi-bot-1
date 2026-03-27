@@ -34,11 +34,14 @@ export function insertRFQ(rfq: {
   const eventTickers = new Set(legs.map((l) => l.event_ticker));
   const isSameGame = eventTickers.size === 1 ? 1 : 0;
 
+  const playerPropPattern = /PTS|REB|AST|3PM|TPM|STL|BLK/i;
+  const hasPlayerProps = legs.some(l => l.market_ticker && playerPropPattern.test(l.market_ticker)) ? 1 : 0;
+
   db.prepare(`
     INSERT OR IGNORE INTO rfqs_seen
       (id, market_ticker, event_ticker, legs_json, contracts_requested,
-       target_cost_dollars, received_at, computed_fair_value, num_legs, is_same_game)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+       target_cost_dollars, received_at, computed_fair_value, num_legs, is_same_game, has_player_props)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).run(
     rfq.id,
     rfq.market_ticker,
@@ -49,7 +52,8 @@ export function insertRFQ(rfq: {
     new Date().toISOString(),
     rfq.computed_fair_value ?? null,
     legs.length,
-    isSameGame
+    isSameGame,
+    hasPlayerProps
   );
 }
 

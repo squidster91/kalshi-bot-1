@@ -152,6 +152,20 @@ function initSchema(db: Database.Database): void {
   try {
     db.exec(`ALTER TABLE rfqs_seen ADD COLUMN leg_prices_snapshot TEXT`);
   } catch { /* column already exists */ }
+  try {
+    db.exec(`ALTER TABLE rfqs_seen ADD COLUMN has_player_props INTEGER DEFAULT 0`);
+  } catch { /* column already exists */ }
+
+  // Backfill has_player_props for existing rows (one-time, uses index)
+  try {
+    db.exec(`
+      UPDATE rfqs_seen SET has_player_props = 1
+      WHERE has_player_props = 0
+        AND (legs_json LIKE '%PTS%' OR legs_json LIKE '%REB%' OR legs_json LIKE '%AST%'
+             OR legs_json LIKE '%3PM%' OR legs_json LIKE '%TPM%' OR legs_json LIKE '%STL%'
+             OR legs_json LIKE '%BLK%')
+    `);
+  } catch { /* ok */ }
 }
 
 export function closeDb(): void {
