@@ -259,28 +259,21 @@ app.get('/api/rfq-categories', (_req, res) => {
     let totalRfqs = 0;
 
     const allRows = db.prepare(`
-      SELECT num_legs, legs_json FROM rfqs_seen WHERE received_at LIKE ? || '%'
-    `).all(today) as Array<{ num_legs: number | null; legs_json: string | null }>;
+      SELECT num_legs,
+        CASE WHEN legs_json LIKE '%PTS%' OR legs_json LIKE '%REB%' OR legs_json LIKE '%AST%'
+             OR legs_json LIKE '%3PM%' OR legs_json LIKE '%TPM%' OR legs_json LIKE '%STL%'
+             OR legs_json LIKE '%BLK%' THEN 1 ELSE 0 END as has_player
+      FROM rfqs_seen WHERE received_at LIKE ? || '%'
+    `).all(today) as Array<{ num_legs: number | null; has_player: number }>;
 
     let teamOnly = 0;
     let hasPlayers = 0;
-    const playerPropPattern = /PTS|REB|AST|3PM|TPM|STLS?|BLKS?/i;
 
     for (const r of allRows) {
       totalRfqs++;
       totalLegs += r.num_legs || 0;
-
-      // Classify: team-only vs player-involved
-      if (r.legs_json) {
-        try {
-          const legs = JSON.parse(r.legs_json);
-          const hasPlayerLeg = Array.isArray(legs) && legs.some((l: { market_ticker?: string }) =>
-            l.market_ticker && playerPropPattern.test(l.market_ticker)
-          );
-          if (hasPlayerLeg) hasPlayers++;
-          else teamOnly++;
-        } catch { teamOnly++; }
-      }
+      if (r.has_player) hasPlayers++;
+      else teamOnly++;
     }
 
     for (const row of rows) {
