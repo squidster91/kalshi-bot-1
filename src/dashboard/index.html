@@ -499,23 +499,21 @@
   <!-- Left: RFQ Table -->
   <div class="main-left">
     <div class="section-header">
-      RFQ Feed
+      RFQ Feed <span style="font-size:10px;color:var(--text-muted);font-weight:400">(team-only, bot-filtered)</span>
       <span class="section-count" id="rfqCount">Loading...</span>
     </div>
+    <div style="background:rgba(59,130,246,0.08);border:1px solid rgba(59,130,246,0.2);border-radius:6px;padding:6px 12px;margin-bottom:8px;font-size:11px;color:var(--text-secondary)">
+      Filters active: <strong style="color:var(--accent-cyan)">Player-prop parlays removed</strong> (PTS/REB/AST/3PM/STL/BLK).
+      <strong style="color:var(--accent-green)">Bot creators filtered</strong> (10+ RFQs/min, <span id="knownBotCount">--</span> historic bots identified).
+    </div>
     <div class="filter-bar">
-      <label>Type:</label>
-      <div class="filter-group" id="typeFilter">
-        <button class="filter-btn active" data-filter="all" onclick="setFilter('type','all',this)">All</button>
-        <button class="filter-btn" data-filter="team" onclick="setFilter('type','team',this)" title="Only team markets (moneyline, spread, totals)">Team Only</button>
-        <button class="filter-btn" data-filter="player" onclick="setFilter('type','player',this)" title="Has at least one player prop">Has Players</button>
-      </div>
-      <label style="margin-left:8px">Legs:</label>
+      <label>Legs:</label>
       <select class="filter-select" id="legsFilter" onchange="applyFilters()">
         <option value="all">All</option>
         <option value="2">2 legs</option>
         <option value="3">3 legs</option>
-        <option value="4-5">4-5 legs</option>
-        <option value="6+">6+ legs</option>
+        <option value="4">4 legs</option>
+        <option value="5+">5+ legs</option>
       </select>
       <label style="margin-left:8px">Category:</label>
       <select class="filter-select" id="catFilter" onchange="applyFilters()">
@@ -553,7 +551,7 @@
       <div class="section-header">Today's Summary</div>
       <div class="summary-grid">
         <div class="summary-cell">
-          <span class="stat-label">Total RFQs</span>
+          <span class="stat-label" title="Team-only RFQs after bot + player-prop filtering">Filtered RFQs</span>
           <span class="stat-value" id="sumRfqs">--</span>
         </div>
         <div class="summary-cell">
@@ -561,12 +559,12 @@
           <span class="stat-value" id="sumAvgLegs">--</span>
         </div>
         <div class="summary-cell">
-          <span class="stat-label" title="Parlays with only team markets (moneyline, spread, totals)">Team Only</span>
-          <span class="stat-value" id="sumTeamOnly" style="color:var(--accent-cyan)">--</span>
+          <span class="stat-label" title="Total raw RFQs before filtering (bots + player props + team)">Raw Total</span>
+          <span class="stat-value" id="sumRawTotal" style="color:var(--text-muted);font-size:14px">--</span>
         </div>
         <div class="summary-cell">
-          <span class="stat-label" title="Parlays that include at least one player prop (pts, reb, ast, etc.)">Has Players</span>
-          <span class="stat-value" id="sumHasPlayers" style="color:var(--accent-purple)">--</span>
+          <span class="stat-label" title="Percentage of RFQs filtered out by bot + player-prop filters">Filtered Out</span>
+          <span class="stat-value" id="sumFilteredPct" style="color:var(--accent-red);font-size:14px">--</span>
         </div>
       </div>
     </div>
@@ -687,23 +685,8 @@
   }
 
   // ── Filtering ──
-  const playerPropPattern = /PTS|REB|AST|3PM|TPM|STLS|BLKS/i;
-  let activeFilters = { type: 'all', legs: 'all', cat: 'all' };
+  let activeFilters = { legs: 'all', cat: 'all' };
   let cachedRfqs = [];
-
-  function hasPlayerLegs(legs) {
-    return legs.some(l => l.market_ticker && playerPropPattern.test(l.market_ticker));
-  }
-
-  function setFilter(group, value, btn) {
-    activeFilters[group] = value;
-    const parent = btn.parentElement;
-    parent.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
-    btn.classList.add('active');
-    applyFilters();
-  }
-  // Make setFilter global for onclick handlers
-  window.setFilter = setFilter;
 
   function applyFilters() {
     activeFilters.legs = document.getElementById('legsFilter').value;
@@ -718,21 +701,12 @@
       const numLegs = r.num_legs || legs.length || 0;
       const cat = parseCategory(r.market_ticker);
 
-      // Type filter
-      if (activeFilters.type === 'team') {
-        if (legs.length === 0) return false;
-        if (hasPlayerLegs(legs)) return false;
-      } else if (activeFilters.type === 'player') {
-        if (legs.length === 0) return false;
-        if (!hasPlayerLegs(legs)) return false;
-      }
-
       // Legs filter
       if (activeFilters.legs !== 'all') {
         if (activeFilters.legs === '2' && numLegs !== 2) return false;
         if (activeFilters.legs === '3' && numLegs !== 3) return false;
-        if (activeFilters.legs === '4-5' && (numLegs < 4 || numLegs > 5)) return false;
-        if (activeFilters.legs === '6+' && numLegs < 6) return false;
+        if (activeFilters.legs === '4' && numLegs !== 4) return false;
+        if (activeFilters.legs === '5+' && numLegs < 5) return false;
       }
 
       // Category filter
@@ -795,7 +769,7 @@
     const tbody = document.getElementById('rfqTableBody');
     const filterCountEl = document.getElementById('filterCount');
 
-    if (activeFilters.type !== 'all' || activeFilters.legs !== 'all' || activeFilters.cat !== 'all') {
+    if (activeFilters.legs !== 'all' || activeFilters.cat !== 'all') {
       filterCountEl.textContent = `Showing ${filtered.length} of ${rfqs.length}`;
     } else {
       filterCountEl.textContent = '';
@@ -834,9 +808,7 @@
       }
       const fvStr = fairValue !== null ? '$' + fairValue.toFixed(4) : '--';
 
-      // Player/team indicator
-      const isPlayer = legs.length > 0 && hasPlayerLegs(legs);
-      const typeIcon = legs.length > 0 ? (isPlayer ? '<span title="Has player props" style="color:var(--accent-purple);font-size:10px">&#9679;</span>' : '<span title="Team only" style="color:var(--accent-cyan);font-size:10px">&#9679;</span>') : '';
+      // All RFQs in this view are team-only (player props filtered server-side)
 
       emit(`<tr style="${isHighLegs ? 'background:rgba(234,179,8,0.04)' : ''}">
         <td class="mono ${timeAgoClass(r.received_at)}">${timeAgo(r.received_at)}</td>
@@ -851,7 +823,7 @@
         <td class="mono">${contracts}</td>
         <td class="mono cost-val">${costStr}</td>
         <td class="mono" style="color:var(--text-secondary)">${fvStr}</td>
-        <td>${typeIcon} <span style="color:${r.quoted ? 'var(--accent-blue)' : 'var(--text-muted)'};font-size:11px">${r.quoted ? 'Quoted' : 'Observed'}</span></td>
+        <td><span style="color:${r.quoted ? 'var(--accent-blue)' : 'var(--text-muted)'};font-size:11px">${r.quoted ? 'Quoted' : 'Observed'}</span></td>
       </tr>`);
 
       if (legs.length > 0) {
@@ -973,10 +945,14 @@
       const container = document.getElementById('categoriesList');
       const countEl = document.getElementById('catCount');
 
-      document.getElementById('sumRfqs').textContent = (data.total_rfqs || 0).toLocaleString();
+      const filtered = data.team_only || 0;
+      const raw = data.total_rfqs || 0;
+      const filteredOut = raw - filtered;
+      document.getElementById('sumRfqs').textContent = filtered.toLocaleString();
       document.getElementById('sumAvgLegs').textContent = data.avg_legs ? data.avg_legs.toFixed(1) : '--';
-      document.getElementById('sumTeamOnly').textContent = (data.team_only || 0).toLocaleString();
-      document.getElementById('sumHasPlayers').textContent = (data.has_players || 0).toLocaleString();
+      document.getElementById('sumRawTotal').textContent = raw.toLocaleString();
+      document.getElementById('sumFilteredPct').textContent = raw > 0 ? ((filteredOut / raw) * 100).toFixed(0) + '%' : '--';
+      document.getElementById('knownBotCount').textContent = (data.known_bots || 0).toLocaleString();
 
       const cats = data.categories || {};
       const entries = Object.entries(cats).sort((a, b) => b[1] - a[1]);

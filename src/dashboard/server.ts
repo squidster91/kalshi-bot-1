@@ -279,12 +279,22 @@ app.get('/api/rfq-categories', (_req, res) => {
       if (other > 0) categories['Multi-Game Combo'] = other;
     }
 
+    // Count known bots
+    let knownBots = 0;
+    try {
+      const botRow = db.prepare(`SELECT COUNT(*) as cnt FROM known_bots`).get() as { cnt: number } | undefined;
+      knownBots = botRow?.cnt || 0;
+    } catch { /* table may not exist yet */ }
+
+    const teamOnly = total - hasPlayers;
+
     res.json({
       categories,
-      avg_legs: total > 0 ? totalLegs / total : 0,
+      avg_legs: teamOnly > 0 ? totalLegs / total : 0,
       total_rfqs: total,
-      team_only: total - hasPlayers,
+      team_only: teamOnly,
       has_players: hasPlayers,
+      known_bots: knownBots,
     });
   } catch (err) {
     logger.error('Dashboard /api/rfq-categories error', { error: String(err) });
