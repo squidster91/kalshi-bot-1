@@ -1,7 +1,7 @@
 import { EventEmitter } from 'events';
 import { CommunicationsManager } from '../api/websocket';
 import { OrderbookManager } from '../api/websocket';
-import { MVELeg, getMarket } from '../api/rest';
+import { MVELeg, getMarket, getMarkets } from '../api/rest';
 import { insertRFQ, insertRFQLegPrices, saveRFQLegPricesSnapshot, markRFQDeleted, upsertPriceCache, loadPriceCache } from '../db/queries';
 import { logger } from '../logger';
 
@@ -137,36 +137,37 @@ export class RFQListener extends EventEmitter {
   private lastApiCall = 0;
   private static MIN_API_INTERVAL_MS = 200; // Max ~5 API calls/sec
 
+  // Track which tickers we've already subscribed to via WS
+  private subscribedTickers = new Set<string>();
+
   private async captureLegPrices(rfqId: string, legs: MVELeg[]): Promise<void> {
     const legPrices: Array<{ ticker: string; side: string; midPrice: number | null }> = [];
     const priceSnapshot: Record<string, number> = {};
     const now = Date.now();
 
-    // If rate limited, skip API calls entirely and just use cache
-    if (this.rateLimited && now < this.rateLimitedUntil) {
-      for (const leg of legs) {
-        const cached = this.priceCache.get(leg.market_ticker);
-        const mid = cached ? cached.mid : null;
-        legPrices.push({ ticker: leg.market_ticker, side: leg.side, midPrice: mid });
-        if (mid !== null) priceSnapshot[leg.market_ticker] = mid;
+    // Step 1: Subscribe new leg tickers to orderbook WebSocket for future RFQs
+    if (this.orderbook) {
+      const newTickers = legs
+        .map(l => l.market_ticker)
+        .filter(t => !this.subscribedTickers.has(t));
+      if (newTickers.length > 0) {
+        this.orderbook.subscribeMarkets(newTickers);
+        for (const t of newTickers) this.subscribedTickers.add(t);
+        logger.debug('Subscribed to orderbook for leg tickers', { count: newTickers.length });
       }
-      insertRFQLegPrices(rfqId, legPrices);
-      if (Object.keys(priceSnapshot).length > 0) {
-        saveRFQLegPricesSnapshot(rfqId, priceSnapshot);
-      }
-      return;
     }
-    this.rateLimited = false;
 
+    // Step 2: Try orderbook + cache first for all legs
+    const needFetch: string[] = []; // event_tickers that need API fetch
     for (const leg of legs) {
       let mid: number | null = null;
 
-      // 1. Try orderbook (in-memory, instant)
+      // Try orderbook (in-memory, instant)
       if (this.orderbook) {
         mid = this.orderbook.getMidPrice(leg.market_ticker);
       }
 
-      // 2. Try cache
+      // Try cache
       if (mid === null) {
         const cached = this.priceCache.get(leg.market_ticker);
         if (cached && (now - cached.ts) < RFQListener.CACHE_TTL_MS) {
@@ -174,41 +175,71 @@ export class RFQListener extends EventEmitter {
         }
       }
 
-      // 3. Fall back to REST API (throttled)
-      if (mid === null) {
-        const timeSinceLastCall = now - this.lastApiCall;
+      if (mid !== null) {
+        legPrices.push({ ticker: leg.market_ticker, side: leg.side, midPrice: mid });
+        priceSnapshot[leg.market_ticker] = mid;
+      } else {
+        // Need to fetch this one
+        legPrices.push({ ticker: leg.market_ticker, side: leg.side, midPrice: null });
+        if (!needFetch.includes(leg.event_ticker)) {
+          needFetch.push(leg.event_ticker);
+        }
+      }
+    }
+
+    // Step 3: Batch-fetch by event_ticker (1 API call per event instead of per leg)
+    if (needFetch.length > 0 && !(this.rateLimited && now < this.rateLimitedUntil)) {
+      this.rateLimited = false;
+
+      for (const eventTicker of needFetch) {
+        const timeSinceLastCall = Date.now() - this.lastApiCall;
         if (timeSinceLastCall < RFQListener.MIN_API_INTERVAL_MS) {
           await new Promise(r => setTimeout(r, RFQListener.MIN_API_INTERVAL_MS - timeSinceLastCall));
         }
 
         try {
           this.lastApiCall = Date.now();
-          const resp = await getMarket(leg.market_ticker);
-          const m = resp.market;
-          if (m.yes_bid > 0 && m.yes_ask > 0) {
-            mid = (m.yes_bid + m.yes_ask) / 2 / 100;
-          } else if (m.last_price > 0) {
-            mid = m.last_price / 100;
+          const resp = await getMarkets({ event_ticker: eventTicker, limit: '100' });
+          let cached = 0;
+          for (const m of resp.markets) {
+            let mid: number | null = null;
+            if (m.yes_bid > 0 && m.yes_ask > 0) {
+              mid = (m.yes_bid + m.yes_ask) / 2 / 100;
+            } else if (m.last_price > 0) {
+              mid = m.last_price / 100;
+            }
+            if (mid !== null) {
+              this.priceCache.set(m.ticker, { mid, ts: Date.now() });
+              try { upsertPriceCache(m.ticker, mid); } catch { /* ok */ }
+              cached++;
+            }
           }
-          if (mid !== null) {
-            this.priceCache.set(leg.market_ticker, { mid, ts: Date.now() });
-            // Persist to database so it survives restarts
-            try { upsertPriceCache(leg.market_ticker, mid); } catch { /* ok */ }
-          }
+          logger.info('Batch-fetched market prices', {
+            event: eventTicker,
+            markets: resp.markets.length,
+            cached,
+          });
         } catch (err) {
           const errMsg = String(err);
           if (errMsg.includes('429')) {
-            // Rate limited - back off for 60 seconds
             this.rateLimited = true;
             this.rateLimitedUntil = Date.now() + 60_000;
-            logger.warn('Rate limited on market lookup, backing off 60s');
+            logger.warn('Rate limited on batch market lookup, backing off 60s');
+            break;
           }
+          logger.debug('Failed to batch-fetch markets', { event: eventTicker, error: errMsg });
         }
       }
 
-      legPrices.push({ ticker: leg.market_ticker, side: leg.side, midPrice: mid });
-      if (mid !== null) {
-        priceSnapshot[leg.market_ticker] = mid;
+      // Now fill in any prices we just fetched
+      for (let i = 0; i < legPrices.length; i++) {
+        if (legPrices[i].midPrice === null) {
+          const cached = this.priceCache.get(legPrices[i].ticker);
+          if (cached) {
+            legPrices[i].midPrice = cached.mid;
+            priceSnapshot[legPrices[i].ticker] = cached.mid;
+          }
+        }
       }
     }
 
