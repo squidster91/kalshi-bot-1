@@ -302,6 +302,60 @@ app.get('/api/rfq-categories', (_req, res) => {
   }
 });
 
+// ── API: Budget distribution (post bot-filter) ──
+app.get('/api/budget-distribution', (_req, res) => {
+  try {
+    const db = getDb();
+    const today = new Date().toISOString().slice(0, 10);
+
+    // Get distribution of target costs, excluding player props (has_player_props=0)
+    const rows = db.prepare(`
+      SELECT
+        CASE
+          WHEN CAST(target_cost_dollars AS REAL) = 0 THEN 'No Budget'
+          WHEN CAST(target_cost_dollars AS REAL) <= 1 THEN '$0-1'
+          WHEN CAST(target_cost_dollars AS REAL) <= 5 THEN '$1-5'
+          WHEN CAST(target_cost_dollars AS REAL) <= 10 THEN '$5-10'
+          WHEN CAST(target_cost_dollars AS REAL) <= 25 THEN '$10-25'
+          WHEN CAST(target_cost_dollars AS REAL) <= 50 THEN '$25-50'
+          WHEN CAST(target_cost_dollars AS REAL) <= 100 THEN '$50-100'
+          WHEN CAST(target_cost_dollars AS REAL) <= 500 THEN '$100-500'
+          ELSE '$500+'
+        END as bucket,
+        COUNT(*) as count,
+        SUM(CASE WHEN CAST(target_cost_dollars AS REAL) = 10 AND (contracts_requested = '0' OR contracts_requested IS NULL OR contracts_requested = '') THEN 1 ELSE 0 END) as exact_10_no_contracts
+      FROM rfqs_seen
+      WHERE received_at LIKE ? || '%'
+        AND has_player_props = 0
+      GROUP BY bucket
+      ORDER BY MIN(CAST(target_cost_dollars AS REAL))
+    `).all(today) as Array<{ bucket: string; count: number; exact_10_no_contracts: number }>;
+
+    // Also get exact $10 + 0 contracts count
+    const exact10 = db.prepare(`
+      SELECT COUNT(*) as count FROM rfqs_seen
+      WHERE received_at LIKE ? || '%'
+        AND has_player_props = 0
+        AND CAST(target_cost_dollars AS REAL) = 10
+        AND (contracts_requested = '0' OR contracts_requested IS NULL OR contracts_requested = '')
+    `).get(today) as { count: number } | undefined;
+
+    const totalTeam = db.prepare(`
+      SELECT COUNT(*) as count FROM rfqs_seen
+      WHERE received_at LIKE ? || '%' AND has_player_props = 0
+    `).get(today) as { count: number } | undefined;
+
+    res.json({
+      buckets: rows.map(r => ({ label: r.bucket, count: r.count })),
+      exact_10_budget_mode: exact10?.count || 0,
+      total_team_only: totalTeam?.count || 0,
+    });
+  } catch (err) {
+    logger.error('Dashboard /api/budget-distribution error', { error: String(err) });
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 // Parse a market ticker into a human-readable category
 function parseCategory(ticker: string): string {
   if (!ticker) return 'Unknown';
