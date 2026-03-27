@@ -259,12 +259,28 @@ app.get('/api/rfq-categories', (_req, res) => {
     let totalRfqs = 0;
 
     const allRows = db.prepare(`
-      SELECT num_legs FROM rfqs_seen WHERE received_at LIKE ? || '%'
-    `).all(today) as Array<{ num_legs: number | null }>;
+      SELECT num_legs, legs_json FROM rfqs_seen WHERE received_at LIKE ? || '%'
+    `).all(today) as Array<{ num_legs: number | null; legs_json: string | null }>;
+
+    let teamOnly = 0;
+    let hasPlayers = 0;
+    const playerPropPattern = /PTS|REB|AST|3PM|TPM|STLS?|BLKS?/i;
 
     for (const r of allRows) {
       totalRfqs++;
       totalLegs += r.num_legs || 0;
+
+      // Classify: team-only vs player-involved
+      if (r.legs_json) {
+        try {
+          const legs = JSON.parse(r.legs_json);
+          const hasPlayerLeg = Array.isArray(legs) && legs.some((l: { market_ticker?: string }) =>
+            l.market_ticker && playerPropPattern.test(l.market_ticker)
+          );
+          if (hasPlayerLeg) hasPlayers++;
+          else teamOnly++;
+        } catch { teamOnly++; }
+      }
     }
 
     for (const row of rows) {
@@ -276,6 +292,8 @@ app.get('/api/rfq-categories', (_req, res) => {
       categories,
       avg_legs: totalRfqs > 0 ? totalLegs / totalRfqs : 0,
       total_rfqs: totalRfqs,
+      team_only: teamOnly,
+      has_players: hasPlayers,
     });
   } catch (err) {
     logger.error('Dashboard /api/rfq-categories error', { error: String(err) });

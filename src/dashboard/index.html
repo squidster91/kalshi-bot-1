@@ -39,6 +39,50 @@
     overflow-x: hidden;
   }
 
+  /* ── Filter Bar ── */
+  .filter-bar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 0;
+    flex-wrap: wrap;
+  }
+  .filter-bar label {
+    font-size: 11px;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-right: 2px;
+  }
+  .filter-group {
+    display: flex;
+    gap: 2px;
+  }
+  .filter-btn {
+    background: var(--bg-secondary);
+    border: 1px solid var(--border);
+    color: var(--text-secondary);
+    padding: 3px 10px;
+    border-radius: 4px;
+    font-size: 11px;
+    cursor: pointer;
+    font-family: 'Inter', sans-serif;
+    transition: all 0.15s;
+  }
+  .filter-btn:hover { border-color: var(--border-bright); color: var(--text-primary); }
+  .filter-btn.active { background: var(--accent-blue); border-color: var(--accent-blue); color: #fff; }
+  .filter-select {
+    background: var(--bg-secondary);
+    border: 1px solid var(--border);
+    color: var(--text-secondary);
+    padding: 3px 8px;
+    border-radius: 4px;
+    font-size: 11px;
+    font-family: 'Inter', sans-serif;
+    cursor: pointer;
+  }
+  .filter-select:focus { outline: none; border-color: var(--accent-blue); }
+
   /* ── Header ── */
   .header {
     background: var(--bg-secondary);
@@ -458,6 +502,27 @@
       RFQ Feed
       <span class="section-count" id="rfqCount">Loading...</span>
     </div>
+    <div class="filter-bar">
+      <label>Type:</label>
+      <div class="filter-group" id="typeFilter">
+        <button class="filter-btn active" data-filter="all" onclick="setFilter('type','all',this)">All</button>
+        <button class="filter-btn" data-filter="team" onclick="setFilter('type','team',this)" title="Only team markets (moneyline, spread, totals)">Team Only</button>
+        <button class="filter-btn" data-filter="player" onclick="setFilter('type','player',this)" title="Has at least one player prop">Has Players</button>
+      </div>
+      <label style="margin-left:8px">Legs:</label>
+      <select class="filter-select" id="legsFilter" onchange="applyFilters()">
+        <option value="all">All</option>
+        <option value="2">2 legs</option>
+        <option value="3">3 legs</option>
+        <option value="4-5">4-5 legs</option>
+        <option value="6+">6+ legs</option>
+      </select>
+      <label style="margin-left:8px">Category:</label>
+      <select class="filter-select" id="catFilter" onchange="applyFilters()">
+        <option value="all">All</option>
+      </select>
+      <span id="filterCount" style="margin-left:auto;font-size:11px;color:var(--text-muted)"></span>
+    </div>
     <div class="rfq-table-wrap">
       <table id="rfqTable">
         <thead>
@@ -494,6 +559,14 @@
         <div class="summary-cell">
           <span class="stat-label">Avg Legs</span>
           <span class="stat-value" id="sumAvgLegs">--</span>
+        </div>
+        <div class="summary-cell">
+          <span class="stat-label" title="Parlays with only team markets (moneyline, spread, totals)">Team Only</span>
+          <span class="stat-value" id="sumTeamOnly" style="color:var(--accent-cyan)">--</span>
+        </div>
+        <div class="summary-cell">
+          <span class="stat-label" title="Parlays that include at least one player prop (pts, reb, ast, etc.)">Has Players</span>
+          <span class="stat-value" id="sumHasPlayers" style="color:var(--accent-purple)">--</span>
         </div>
       </div>
     </div>
@@ -613,6 +686,62 @@
     catch { return {}; }
   }
 
+  // ── Filtering ──
+  const playerPropPattern = /PTS|REB|AST|3PM|TPM|STLS|BLKS/i;
+  let activeFilters = { type: 'all', legs: 'all', cat: 'all' };
+  let cachedRfqs = [];
+
+  function hasPlayerLegs(legs) {
+    return legs.some(l => l.market_ticker && playerPropPattern.test(l.market_ticker));
+  }
+
+  function setFilter(group, value, btn) {
+    activeFilters[group] = value;
+    const parent = btn.parentElement;
+    parent.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    applyFilters();
+  }
+  // Make setFilter global for onclick handlers
+  window.setFilter = setFilter;
+
+  function applyFilters() {
+    activeFilters.legs = document.getElementById('legsFilter').value;
+    activeFilters.cat = document.getElementById('catFilter').value;
+    renderRFQTable(cachedRfqs);
+  }
+  window.applyFilters = applyFilters;
+
+  function filterRfqs(rfqs) {
+    return rfqs.filter(r => {
+      const legs = parseLegs(r.legs_json);
+      const numLegs = r.num_legs || legs.length || 0;
+      const cat = parseCategory(r.market_ticker);
+
+      // Type filter
+      if (activeFilters.type === 'team') {
+        if (legs.length === 0) return false;
+        if (hasPlayerLegs(legs)) return false;
+      } else if (activeFilters.type === 'player') {
+        if (legs.length === 0) return false;
+        if (!hasPlayerLegs(legs)) return false;
+      }
+
+      // Legs filter
+      if (activeFilters.legs !== 'all') {
+        if (activeFilters.legs === '2' && numLegs !== 2) return false;
+        if (activeFilters.legs === '3' && numLegs !== 3) return false;
+        if (activeFilters.legs === '4-5' && (numLegs < 4 || numLegs > 5)) return false;
+        if (activeFilters.legs === '6+' && numLegs < 6) return false;
+      }
+
+      // Category filter
+      if (activeFilters.cat !== 'all' && cat.label !== activeFilters.cat) return false;
+
+      return true;
+    });
+  }
+
   async function fetchJSON(url) {
     const res = await fetch(url);
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -661,76 +790,102 @@
 
   // ── Update RFQ Table ──
 
+  function renderRFQTable(rfqs) {
+    const filtered = filterRfqs(rfqs);
+    const tbody = document.getElementById('rfqTableBody');
+    const filterCountEl = document.getElementById('filterCount');
+
+    if (activeFilters.type !== 'all' || activeFilters.legs !== 'all' || activeFilters.cat !== 'all') {
+      filterCountEl.textContent = `Showing ${filtered.length} of ${rfqs.length}`;
+    } else {
+      filterCountEl.textContent = '';
+    }
+
+    if (filtered.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="9" class="empty-state">No RFQs match filters</td></tr>';
+      return;
+    }
+
+    let html = '';
+    filtered.forEach((r, i) => {
+      renderRFQRow(r, i, html_parts => html += html_parts);
+    });
+    tbody.innerHTML = html;
+  }
+
+  function renderRFQRow(r, i, emit) {
+      const cat = parseCategory(r.market_ticker);
+      const legs = parseLegs(r.legs_json);
+      const numLegs = r.num_legs || legs.length || 0;
+      const isHighLegs = numLegs >= 5;
+      const cost = r.target_cost_dollars;
+      const costNum = Number(cost) || 0;
+      const costStr = costNum > 0 ? '$' + costNum.toFixed(2) : '--';
+      const contracts = r.contracts_requested && Number(r.contracts_requested) > 0
+        ? Number(r.contracts_requested).toFixed(0)
+        : '--';
+
+      let fairValue = null;
+      const prices = r.leg_prices_snapshot ? parsePrices(r.leg_prices_snapshot) : {};
+      const priceVals = Object.values(prices);
+      if (priceVals.length > 0) {
+        fairValue = 1;
+        for (const p of priceVals) fairValue *= p;
+      }
+      const fvStr = fairValue !== null ? '$' + fairValue.toFixed(4) : '--';
+
+      // Player/team indicator
+      const isPlayer = legs.length > 0 && hasPlayerLegs(legs);
+      const typeIcon = legs.length > 0 ? (isPlayer ? '<span title="Has player props" style="color:var(--accent-purple);font-size:10px">&#9679;</span>' : '<span title="Team only" style="color:var(--accent-cyan);font-size:10px">&#9679;</span>') : '';
+
+      emit(`<tr style="${isHighLegs ? 'background:rgba(234,179,8,0.04)' : ''}">
+        <td class="mono ${timeAgoClass(r.received_at)}">${timeAgo(r.received_at)}</td>
+        <td><span class="cat-tag ${cat.cls}">${cat.label}</span></td>
+        <td class="mono" style="max-width:200px;overflow:hidden;text-overflow:ellipsis" title="${r.market_ticker || ''}">${r.market_ticker || '--'}</td>
+        <td class="mono" style="color:var(--text-secondary);max-width:160px;overflow:hidden;text-overflow:ellipsis" title="${r.event_ticker || ''}">${r.event_ticker || '--'}</td>
+        <td class="${isHighLegs ? 'legs-high' : ''}">
+          ${numLegs > 0 && legs.length > 0
+            ? `<a class="legs-toggle" onclick="toggleLegs(event, 'legs-${i}')">${numLegs} legs</a>`
+            : (numLegs || '--')}
+        </td>
+        <td class="mono">${contracts}</td>
+        <td class="mono cost-val">${costStr}</td>
+        <td class="mono" style="color:var(--text-secondary)">${fvStr}</td>
+        <td>${typeIcon} <span style="color:${r.quoted ? 'var(--accent-blue)' : 'var(--text-muted)'};font-size:11px">${r.quoted ? 'Quoted' : 'Observed'}</span></td>
+      </tr>`);
+
+      if (legs.length > 0) {
+        emit(`<tr id="legs-${i}" class="legs-detail">
+          <td colspan="9" style="padding:8px 12px 8px 48px;background:var(--bg-card)">
+            ${legs.map(l => {
+              const side = (l.side || '').toLowerCase();
+              const sideClass = side === 'yes' ? 'leg-side-yes' : 'leg-side-no';
+              const ticker = l.market_ticker || '?';
+              return `<div class="leg-item">
+                <span class="${sideClass}" style="width:30px">${(side || '?').toUpperCase()}</span>
+                <span style="color:var(--text-primary)">${ticker}</span>
+              </div>`;
+            }).join('')}
+          </td>
+        </tr>`);
+      }
+  }
+
   async function updateRFQs() {
     try {
       const rfqs = await fetchJSON('/api/rfqs');
-      const tbody = document.getElementById('rfqTableBody');
+      cachedRfqs = rfqs;
       document.getElementById('rfqCount').textContent = rfqs.length + ' RFQs loaded';
 
-      if (rfqs.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="10" class="empty-state">No RFQs received yet. Waiting for market activity...</td></tr>';
-        return;
-      }
+      // Populate category filter dropdown
+      const catSet = new Set();
+      rfqs.forEach(r => catSet.add(parseCategory(r.market_ticker).label));
+      const catSelect = document.getElementById('catFilter');
+      const curCat = catSelect.value;
+      catSelect.innerHTML = '<option value="all">All</option>' +
+        [...catSet].sort().map(c => `<option value="${c}" ${c === curCat ? 'selected' : ''}>${c}</option>`).join('');
 
-      let html = '';
-      rfqs.forEach((r, i) => {
-        const cat = parseCategory(r.market_ticker);
-        const legs = parseLegs(r.legs_json);
-        const numLegs = r.num_legs || legs.length || 0;
-        const isHighLegs = numLegs >= 5;
-        const cost = r.target_cost_dollars;
-        const costNum = Number(cost) || 0;
-        const costStr = costNum > 0 ? '$' + costNum.toFixed(2) : '--';
-        const contracts = r.contracts_requested && Number(r.contracts_requested) > 0
-          ? Number(r.contracts_requested).toFixed(0)
-          : '--';
-
-        // Compute fair value from leg_prices_snapshot
-        let fairValue = null;
-        const prices = r.leg_prices_snapshot ? parsePrices(r.leg_prices_snapshot) : {};
-        const priceVals = Object.values(prices);
-        if (priceVals.length > 0) {
-          fairValue = 1;
-          for (const p of priceVals) fairValue *= p;
-        }
-
-        const fvStr = fairValue !== null ? '$' + fairValue.toFixed(4) : '--';
-
-        html += `<tr style="${isHighLegs ? 'background:rgba(234,179,8,0.04)' : ''}">
-          <td class="mono ${timeAgoClass(r.received_at)}">${timeAgo(r.received_at)}</td>
-          <td><span class="cat-tag ${cat.cls}">${cat.label}</span></td>
-          <td class="mono" style="max-width:200px;overflow:hidden;text-overflow:ellipsis" title="${r.market_ticker || ''}">${r.market_ticker || '--'}</td>
-          <td class="mono" style="color:var(--text-secondary);max-width:160px;overflow:hidden;text-overflow:ellipsis" title="${r.event_ticker || ''}">${r.event_ticker || '--'}</td>
-          <td class="${isHighLegs ? 'legs-high' : ''}">
-            ${numLegs > 0 && legs.length > 0
-              ? `<a class="legs-toggle" onclick="toggleLegs(event, 'legs-${i}')">${numLegs} legs</a>`
-              : (numLegs || '--')}
-          </td>
-          <td class="mono">${contracts}</td>
-          <td class="mono cost-val">${costStr}</td>
-          <td class="mono" style="color:var(--text-secondary)">${fvStr}</td>
-          <td><span style="color:${r.quoted ? 'var(--accent-blue)' : 'var(--text-muted)'};font-size:11px">${r.quoted ? 'Quoted' : 'Observed'}</span></td>
-        </tr>`;
-
-        // Expandable legs detail row
-        if (legs.length > 0) {
-          html += `<tr id="legs-${i}" class="legs-detail">
-            <td colspan="10" style="padding:8px 12px 8px 48px;background:var(--bg-card)">
-              ${legs.map(l => {
-                const side = (l.side || '').toLowerCase();
-                const sideClass = side === 'yes' ? 'leg-side-yes' : 'leg-side-no';
-                const ticker = l.market_ticker || '?';
-                return `<div class="leg-item">
-                  <span class="${sideClass}" style="width:30px">${(side || '?').toUpperCase()}</span>
-                  <span style="color:var(--text-primary)">${ticker}</span>
-                </div>`;
-              }).join('')}
-            </td>
-          </tr>`;
-        }
-      });
-
-      tbody.innerHTML = html;
+      renderRFQTable(rfqs);
     } catch (err) {
       console.error('Failed to fetch RFQs:', err);
     }
@@ -820,6 +975,8 @@
 
       document.getElementById('sumRfqs').textContent = (data.total_rfqs || 0).toLocaleString();
       document.getElementById('sumAvgLegs').textContent = data.avg_legs ? data.avg_legs.toFixed(1) : '--';
+      document.getElementById('sumTeamOnly').textContent = (data.team_only || 0).toLocaleString();
+      document.getElementById('sumHasPlayers').textContent = (data.has_players || 0).toLocaleString();
 
       const cats = data.categories || {};
       const entries = Object.entries(cats).sort((a, b) => b[1] - a[1]);
