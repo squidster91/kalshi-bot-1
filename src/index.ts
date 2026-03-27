@@ -11,7 +11,7 @@ import { getRiskUtilization, activateKillSwitch, isKillSwitchActive } from './ri
 import { getTodayPnL, getTodayStats, logPnL } from './db/queries';
 import { buildCorrelationMatrix } from './data/correlation-builder';
 import { sendTelegramMessage, notifyFill, notifyRiskWarning, notifyKillSwitch, notifyDailySummary, notifyError } from './notifications';
-import { startDashboard } from './dashboard/server';
+import { startDashboard, setFilterStatsProvider } from './dashboard/server';
 
 class KalshiMMBot {
   private orderbookManager: OrderbookManager;
@@ -90,6 +90,7 @@ class KalshiMMBot {
     this.setupShutdownHandlers();
 
     // Start web dashboard
+    setFilterStatsProvider(() => this.rfqListener.getStats());
     startDashboard();
 
     logger.info('=== KalshiMM Bot Running ===');

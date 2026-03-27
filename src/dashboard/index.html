@@ -498,10 +498,12 @@
 
   <!-- Left: RFQ Table -->
   <div class="main-left">
-    <div style="background:rgba(59,130,246,0.08);border:1px solid rgba(59,130,246,0.2);border-radius:6px;padding:6px 12px;margin-bottom:8px;font-size:11px;color:var(--text-secondary)">
-      Filters active: <strong style="color:var(--accent-cyan)">Player-prop parlays removed</strong> (PTS/REB/AST/3PM/STL/BLK).
-      <strong style="color:var(--accent-green)">Bot creators filtered</strong> (3+ RFQs/min, <span id="knownBotCount">--</span> historic bots).
-      <strong style="color:var(--accent-yellow)">$10 budget-mode removed</strong> ($10 target + 0 contracts).
+    <div id="filterStatsBar" style="background:rgba(59,130,246,0.08);border:1px solid rgba(59,130,246,0.2);border-radius:6px;padding:6px 12px;margin-bottom:8px;font-size:11px;color:var(--text-secondary);display:flex;gap:16px;flex-wrap:wrap;align-items:center">
+      <span>Filters (this session):</span>
+      <span style="color:var(--accent-green)">Bots (3+/min): <strong id="fsBotCount">--</strong> <span id="fsBotPct" style="color:var(--text-muted)"></span></span>
+      <span style="color:var(--accent-cyan)">Player props: <strong id="fsPlayerCount">--</strong> <span id="fsPlayerPct" style="color:var(--text-muted)"></span></span>
+      <span style="color:var(--accent-yellow)">$10 budget: <strong id="fsBudgetCount">--</strong> <span id="fsBudgetPct" style="color:var(--text-muted)"></span></span>
+      <span style="color:var(--text-muted)">Total seen: <strong id="fsTotalSeen" style="color:var(--text-secondary)">--</strong></span>
     </div>
     <div class="filter-bar">
       <label>Legs:</label>
@@ -957,7 +959,7 @@
       document.getElementById('sumAvgLegs').textContent = data.avg_legs ? data.avg_legs.toFixed(1) : '--';
       document.getElementById('sumRawTotal').textContent = raw.toLocaleString();
       document.getElementById('sumFilteredPct').textContent = raw > 0 ? ((filteredOut / raw) * 100).toFixed(0) + '%' : '--';
-      document.getElementById('knownBotCount').textContent = (data.known_bots || 0).toLocaleString();
+      // knownBotCount now shown in filter stats bar
 
       const cats = data.categories || {};
       const entries = Object.entries(cats).sort((a, b) => b[1] - a[1]);
@@ -1000,6 +1002,26 @@
     if (n.includes('cross')) return { color: '#c084fc' };
     if (n.includes('multi')) return { color: '#60a5fa' };
     return { color: '#4a4f62' };
+  }
+
+  // ── Update Filter Stats Bar ──
+
+  async function updateFilterStats() {
+    try {
+      const data = await fetchJSON('/api/filter-stats');
+      const total = data.totalSeen || 0;
+      const pct = (n) => total > 0 ? `(${((n / total) * 100).toFixed(1)}%)` : '';
+
+      document.getElementById('fsBotCount').textContent = (data.botFiltered || 0).toLocaleString();
+      document.getElementById('fsBotPct').textContent = pct(data.botFiltered || 0);
+      document.getElementById('fsPlayerCount').textContent = (data.playerFiltered || 0).toLocaleString();
+      document.getElementById('fsPlayerPct').textContent = pct(data.playerFiltered || 0);
+      document.getElementById('fsBudgetCount').textContent = (data.budgetModeFiltered || 0).toLocaleString();
+      document.getElementById('fsBudgetPct').textContent = pct(data.budgetModeFiltered || 0);
+      document.getElementById('fsTotalSeen').textContent = total.toLocaleString();
+    } catch (err) {
+      console.error('Failed to fetch filter stats:', err);
+    }
   }
 
   // ── Update Budget Distribution Chart ──
@@ -1084,6 +1106,7 @@
       updateVolumeChart(),
       updateCategories(),
       updateBudgetChart(),
+      updateFilterStats(),
     ]);
     document.getElementById('lastUpdate').textContent =
       new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false, timeZone: 'America/Los_Angeles' }) + ' PT';

@@ -347,7 +347,14 @@ export class RFQListener extends EventEmitter {
     }
   }
 
-  getStats(): { rfqCount: number } {
-    return { rfqCount: this.rfqCount };
+  getStats() {
+    return {
+      rfqCount: this.rfqCount,
+      totalSeen: this.totalSeen,
+      botFiltered: this.botFiltered,
+      playerFiltered: this.playerFiltered,
+      budgetModeFiltered: this.budgetModeFiltered,
+      knownBots: this.knownBots.size,
+    };
   }
 }
