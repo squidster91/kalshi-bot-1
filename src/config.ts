@@ -33,8 +33,8 @@ const BASE_URLS: Record<KalshiEnv, { rest: string; ws: string }> = {
     ws: 'wss://demo-api.kalshi.co/trade-api/ws/v2',
   },
   production: {
-    rest: 'https://trading-api.kalshi.com/trade-api/v2',
-    ws: 'wss://trading-api.kalshi.com/trade-api/ws/v2',
+    rest: 'https://api.elections.kalshi.com/trade-api/v2',
+    ws: 'wss://api.elections.kalshi.com/trade-api/ws/v2',
   },
 };
 
