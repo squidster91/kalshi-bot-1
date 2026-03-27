@@ -545,10 +545,10 @@
 
     <!-- Qualified RFQs Today -->
     <div class="panel-section">
-      <div class="section-header" title="RFQs that passed ALL filters today (PST): not HFT bots, not player props, not $10 budget-mode, not duplicate legs. Persisted day-over-day.">Qualified RFQs Today (PST)</div>
+      <div class="section-header" title="RFQs that passed ALL filters today (PST): not HFT bots (10+ RFQs/min), not player props. Persisted day-over-day.">Qualified RFQs Today (PST)</div>
       <div class="summary-grid">
         <div class="summary-cell">
-          <span class="stat-label" title="Number of RFQs today that passed all filters (HFT, player props, $10 budget, dupe legs)">Qualified RFQs</span>
+          <span class="stat-label" title="Number of RFQs today that passed all filters (HFT bots, player props)">Qualified RFQs</span>
           <span class="stat-value" id="qualCount" style="color:var(--accent-green)">--</span>
         </div>
         <div class="summary-cell">
@@ -560,7 +560,7 @@
           <span class="stat-value" id="sumAvgLegs">--</span>
         </div>
         <div class="summary-cell">
-          <span class="stat-label" title="% of all RFQs removed by all filters combined. DB-level: player props + $10 budget. Pre-DB: HFT bots + dupe legs.">Filtered Out</span>
+          <span class="stat-label" title="% of all RFQs removed by filters. Pre-DB: HFT bots. DB-level: player props.">Filtered Out</span>
           <span class="stat-value" id="sumFilteredPct" style="color:var(--accent-red);font-size:14px">--</span>
         </div>
       </div>
@@ -576,7 +576,7 @@
 
     <!-- Budget Distribution -->
     <div class="panel-section">
-      <div class="section-header" title="Distribution of target_cost_dollars across team-only RFQs. Only high-freq bot filter applied — $10 budget and dupe-leg filters NOT applied so you can see the pattern.">Budget Distribution <span style="font-size:10px;color:var(--text-muted);font-weight:400">(team-only, high-freq bot filter only)</span></div>
+      <div class="section-header" title="Distribution of target_cost_dollars across non-bot, non-player-prop RFQs today (PST).">Budget Distribution <span style="font-size:10px;color:var(--text-muted);font-weight:400">(team-only, high-freq bot filter only)</span></div>
       <div id="budgetStats" style="font-size:11px;color:var(--text-secondary);padding:0 0 6px 0"></div>
       <div class="chart-container">
         <canvas id="budgetChart"></canvas>
@@ -585,7 +585,7 @@
 
     <!-- Legs Distribution -->
     <div class="panel-section">
-      <div class="section-header" title="Count of RFQs by number of legs. Team-only with high-freq bot filter applied. $10 budget and dupe-leg filters NOT applied.">Legs Distribution <span style="font-size:10px;color:var(--text-muted);font-weight:400">(team-only, high-freq bot filter only)</span></div>
+      <div class="section-header" title="Count of RFQs by number of legs. Non-bot, non-player-prop RFQs today (PST).">Legs Distribution <span style="font-size:10px;color:var(--text-muted);font-weight:400">(team-only, high-freq bot filter only)</span></div>
       <div class="chart-container">
         <canvas id="legsChart"></canvas>
       </div>
@@ -817,10 +817,18 @@
 
       let fairValue = null;
       const prices = r.leg_prices_snapshot ? parsePrices(r.leg_prices_snapshot) : {};
-      const priceVals = Object.values(prices);
-      if (priceVals.length > 0) {
+      if (legs.length > 0 && Object.keys(prices).length > 0) {
         fairValue = 1;
-        for (const p of priceVals) fairValue *= p;
+        for (const leg of legs) {
+          const ticker = leg.market_ticker || '';
+          const mid = prices[ticker];
+          if (mid != null) {
+            const side = (leg.side || '').toLowerCase();
+            const prob = side === 'no' ? (1 - mid) : mid;
+            fairValue *= prob;
+          }
+        }
+        if (fairValue === 1) fairValue = null; // no prices matched
       }
       const fvStr = fairValue !== null ? '$' + fairValue.toFixed(4) : '--';
 
@@ -849,9 +857,19 @@
               const side = (l.side || '').toLowerCase();
               const sideClass = side === 'yes' ? 'leg-side-yes' : 'leg-side-no';
               const ticker = l.market_ticker || '?';
+              const mid = prices[ticker];
+              let oddsStr = '';
+              if (mid != null) {
+                const prob = side === 'no' ? (1 - mid) : mid;
+                const pct = (prob * 100).toFixed(1);
+                const midCents = Math.round(mid * 100);
+                oddsStr = '<span style="color:var(--text-muted);font-size:10px;margin-left:6px">' +
+                  midCents + '¢ mid → ' + pct + '%</span>';
+              }
               return `<div class="leg-item">
                 <span class="${sideClass}" style="width:30px">${(side || '?').toUpperCase()}</span>
                 <span style="color:var(--text-primary)">${ticker}</span>
+                ${oddsStr}
               </div>`;
             }).join('')}
           </td>
