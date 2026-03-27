@@ -123,12 +123,32 @@ export class RFQListener extends EventEmitter {
 
   // Price cache: ticker -> { mid, ts }. Avoids hammering API for same ticker.
   private priceCache: Map<string, { mid: number; ts: number }> = new Map();
-  private static CACHE_TTL_MS = 30_000; // 30 seconds
+  private static CACHE_TTL_MS = 5 * 60_000; // 5 minutes
+  private rateLimited = false;
+  private rateLimitedUntil = 0;
+  private lastApiCall = 0;
+  private static MIN_API_INTERVAL_MS = 200; // Max ~5 API calls/sec
 
   private async captureLegPrices(rfqId: string, legs: MVELeg[]): Promise<void> {
     const legPrices: Array<{ ticker: string; side: string; midPrice: number | null }> = [];
     const priceSnapshot: Record<string, number> = {};
     const now = Date.now();
+
+    // If rate limited, skip API calls entirely and just use cache
+    if (this.rateLimited && now < this.rateLimitedUntil) {
+      for (const leg of legs) {
+        const cached = this.priceCache.get(leg.market_ticker);
+        const mid = cached ? cached.mid : null;
+        legPrices.push({ ticker: leg.market_ticker, side: leg.side, midPrice: mid });
+        if (mid !== null) priceSnapshot[leg.market_ticker] = mid;
+      }
+      insertRFQLegPrices(rfqId, legPrices);
+      if (Object.keys(priceSnapshot).length > 0) {
+        saveRFQLegPricesSnapshot(rfqId, priceSnapshot);
+      }
+      return;
+    }
+    this.rateLimited = false;
 
     for (const leg of legs) {
       let mid: number | null = null;
@@ -146,21 +166,33 @@ export class RFQListener extends EventEmitter {
         }
       }
 
-      // 3. Fall back to REST API
+      // 3. Fall back to REST API (throttled)
       if (mid === null) {
+        const timeSinceLastCall = now - this.lastApiCall;
+        if (timeSinceLastCall < RFQListener.MIN_API_INTERVAL_MS) {
+          await new Promise(r => setTimeout(r, RFQListener.MIN_API_INTERVAL_MS - timeSinceLastCall));
+        }
+
         try {
+          this.lastApiCall = Date.now();
           const resp = await getMarket(leg.market_ticker);
           const m = resp.market;
           if (m.yes_bid > 0 && m.yes_ask > 0) {
-            mid = (m.yes_bid + m.yes_ask) / 2 / 100; // Convert cents to dollars
+            mid = (m.yes_bid + m.yes_ask) / 2 / 100;
           } else if (m.last_price > 0) {
             mid = m.last_price / 100;
           }
           if (mid !== null) {
-            this.priceCache.set(leg.market_ticker, { mid, ts: now });
+            this.priceCache.set(leg.market_ticker, { mid, ts: Date.now() });
           }
-        } catch {
-          // Market might not exist or API error - skip
+        } catch (err) {
+          const errMsg = String(err);
+          if (errMsg.includes('429')) {
+            // Rate limited - back off for 60 seconds
+            this.rateLimited = true;
+            this.rateLimitedUntil = Date.now() + 60_000;
+            logger.warn('Rate limited on market lookup, backing off 60s');
+          }
         }
       }
 
@@ -176,9 +208,9 @@ export class RFQListener extends EventEmitter {
     }
 
     // Clean old cache entries periodically
-    if (this.priceCache.size > 5000) {
+    if (this.priceCache.size > 10000) {
       for (const [k, v] of this.priceCache) {
-        if (now - v.ts > RFQListener.CACHE_TTL_MS * 10) {
+        if (now - v.ts > RFQListener.CACHE_TTL_MS * 2) {
           this.priceCache.delete(k);
         }
       }
