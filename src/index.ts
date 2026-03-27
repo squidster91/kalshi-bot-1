@@ -11,6 +11,7 @@ import { getRiskUtilization, activateKillSwitch, isKillSwitchActive } from './ri
 import { getTodayPnL, getTodayStats, logPnL } from './db/queries';
 import { buildCorrelationMatrix } from './data/correlation-builder';
 import { sendTelegramMessage, notifyFill, notifyRiskWarning, notifyKillSwitch, notifyDailySummary, notifyError } from './notifications';
+import { startDashboard } from './dashboard/server';
 
 class KalshiMMBot {
   private orderbookManager: OrderbookManager;
@@ -85,6 +86,9 @@ class KalshiMMBot {
 
     // Handle graceful shutdown
     this.setupShutdownHandlers();
+
+    // Start web dashboard
+    startDashboard();
 
     logger.info('=== KalshiMM Bot Running ===');
     await sendTelegramMessage(`KalshiMM Bot started (${config.kalshi.env} mode, paper=${config.bot.paperMode})`);

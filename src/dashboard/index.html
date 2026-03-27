@@ -1,0 +1,871 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>KalshiMM Dashboard</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<style>
+  :root {
+    --bg-primary: #0f1117;
+    --bg-secondary: #1a1d2e;
+    --bg-card: #1e2235;
+    --bg-hover: #262a40;
+    --border: #2d3154;
+    --text-primary: #e4e6f0;
+    --text-secondary: #8b8fa3;
+    --text-muted: #5c6078;
+    --accent-blue: #4c7cf5;
+    --accent-green: #34d399;
+    --accent-red: #f87171;
+    --accent-yellow: #fbbf24;
+    --accent-purple: #a78bfa;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', sans-serif;
+    background: var(--bg-primary);
+    color: var(--text-primary);
+    line-height: 1.5;
+    min-height: 100vh;
+  }
+
+  /* Header */
+  .header {
+    background: var(--bg-secondary);
+    border-bottom: 1px solid var(--border);
+    padding: 16px 32px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  .header-left {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+  }
+
+  .header h1 {
+    font-size: 20px;
+    font-weight: 600;
+    letter-spacing: -0.3px;
+  }
+
+  .badge {
+    padding: 3px 10px;
+    border-radius: 12px;
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+
+  .badge-paper {
+    background: rgba(251, 191, 36, 0.15);
+    color: var(--accent-yellow);
+    border: 1px solid rgba(251, 191, 36, 0.3);
+  }
+
+  .badge-live {
+    background: rgba(52, 211, 153, 0.15);
+    color: var(--accent-green);
+    border: 1px solid rgba(52, 211, 153, 0.3);
+  }
+
+  .badge-demo {
+    background: rgba(167, 139, 250, 0.15);
+    color: var(--accent-purple);
+    border: 1px solid rgba(167, 139, 250, 0.3);
+  }
+
+  .badge-kill {
+    background: rgba(248, 113, 113, 0.15);
+    color: var(--accent-red);
+    border: 1px solid rgba(248, 113, 113, 0.3);
+  }
+
+  .header-right {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    color: var(--text-secondary);
+    font-size: 13px;
+  }
+
+  .status-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--accent-green);
+    display: inline-block;
+    animation: pulse 2s infinite;
+  }
+
+  @keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.4; }
+  }
+
+  /* Main layout */
+  .container {
+    max-width: 1440px;
+    margin: 0 auto;
+    padding: 24px 32px;
+  }
+
+  /* Stats cards */
+  .cards-row {
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    gap: 16px;
+    margin-bottom: 24px;
+  }
+
+  .card {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 20px;
+  }
+
+  .card-label {
+    font-size: 12px;
+    font-weight: 500;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: var(--text-secondary);
+    margin-bottom: 8px;
+  }
+
+  .card-value {
+    font-size: 28px;
+    font-weight: 700;
+    letter-spacing: -0.5px;
+  }
+
+  .card-sub {
+    font-size: 12px;
+    color: var(--text-muted);
+    margin-top: 4px;
+  }
+
+  .positive { color: var(--accent-green); }
+  .negative { color: var(--accent-red); }
+  .neutral { color: var(--text-primary); }
+
+  /* Two-column layout */
+  .grid-2 {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 24px;
+    margin-bottom: 24px;
+  }
+
+  .grid-full {
+    margin-bottom: 24px;
+  }
+
+  /* Section cards */
+  .section {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    overflow: hidden;
+  }
+
+  .section-header {
+    padding: 16px 20px;
+    border-bottom: 1px solid var(--border);
+    font-size: 14px;
+    font-weight: 600;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  .section-count {
+    font-size: 12px;
+    color: var(--text-secondary);
+    font-weight: 400;
+  }
+
+  /* Tables */
+  .table-wrap {
+    overflow-x: auto;
+    max-height: 400px;
+    overflow-y: auto;
+  }
+
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+  }
+
+  thead th {
+    position: sticky;
+    top: 0;
+    background: var(--bg-secondary);
+    padding: 10px 14px;
+    text-align: left;
+    font-weight: 600;
+    color: var(--text-secondary);
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  tbody td {
+    padding: 9px 14px;
+    border-bottom: 1px solid rgba(45, 49, 84, 0.5);
+    white-space: nowrap;
+  }
+
+  tbody tr:hover {
+    background: var(--bg-hover);
+  }
+
+  .mono {
+    font-family: 'SF Mono', 'Fira Code', 'Cascadia Code', monospace;
+    font-size: 12px;
+  }
+
+  /* Status badges for table */
+  .status {
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-size: 11px;
+    font-weight: 600;
+  }
+
+  .status-quoted { background: rgba(76, 124, 245, 0.15); color: var(--accent-blue); }
+  .status-skipped { background: rgba(92, 96, 120, 0.2); color: var(--text-muted); }
+  .status-open { background: rgba(76, 124, 245, 0.15); color: var(--accent-blue); }
+  .status-executed { background: rgba(52, 211, 153, 0.15); color: var(--accent-green); }
+  .status-cancelled { background: rgba(248, 113, 113, 0.15); color: var(--accent-red); }
+  .status-accepted { background: rgba(251, 191, 36, 0.15); color: var(--accent-yellow); }
+
+  /* Risk bars */
+  .risk-item {
+    padding: 14px 20px;
+    border-bottom: 1px solid rgba(45, 49, 84, 0.5);
+  }
+
+  .risk-item:last-child { border-bottom: none; }
+
+  .risk-label {
+    display: flex;
+    justify-content: space-between;
+    margin-bottom: 8px;
+    font-size: 13px;
+  }
+
+  .risk-label span:first-child { color: var(--text-primary); }
+  .risk-label span:last-child { color: var(--text-secondary); font-family: monospace; font-size: 12px; }
+
+  .risk-bar {
+    height: 6px;
+    background: rgba(45, 49, 84, 0.8);
+    border-radius: 3px;
+    overflow: hidden;
+  }
+
+  .risk-bar-fill {
+    height: 100%;
+    border-radius: 3px;
+    transition: width 0.5s ease;
+  }
+
+  .risk-low { background: var(--accent-green); }
+  .risk-medium { background: var(--accent-yellow); }
+  .risk-high { background: var(--accent-red); }
+
+  /* Chart */
+  .chart-container {
+    padding: 20px;
+    height: 300px;
+    position: relative;
+  }
+
+  /* Warnings */
+  .warnings {
+    padding: 12px 20px;
+    background: rgba(248, 113, 113, 0.08);
+    border-top: 1px solid rgba(248, 113, 113, 0.2);
+  }
+
+  .warning-item {
+    color: var(--accent-red);
+    font-size: 12px;
+    padding: 2px 0;
+  }
+
+  /* Empty states */
+  .empty-state {
+    padding: 40px 20px;
+    text-align: center;
+    color: var(--text-muted);
+    font-size: 13px;
+  }
+
+  /* Responsive */
+  @media (max-width: 1200px) {
+    .cards-row { grid-template-columns: repeat(3, 1fr); }
+    .grid-2 { grid-template-columns: 1fr; }
+  }
+
+  @media (max-width: 768px) {
+    .cards-row { grid-template-columns: repeat(2, 1fr); }
+    .container { padding: 16px; }
+    .header { padding: 12px 16px; }
+  }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <div class="header-left">
+    <h1>KalshiMM Dashboard</h1>
+    <span id="modeBadge" class="badge badge-paper">PAPER</span>
+    <span id="envBadge" class="badge badge-demo">DEMO</span>
+    <span id="killBadge" class="badge badge-kill" style="display:none">KILL SWITCH</span>
+  </div>
+  <div class="header-right">
+    <span class="status-dot"></span>
+    <span>Auto-refresh 30s</span>
+    <span id="lastUpdate" style="margin-left:8px">--</span>
+  </div>
+</div>
+
+<div class="container">
+
+  <!-- Stats Cards -->
+  <div class="cards-row">
+    <div class="card">
+      <div class="card-label">RFQs Seen Today</div>
+      <div class="card-value neutral" id="statRfqs">--</div>
+      <div class="card-sub">Combo requests received</div>
+    </div>
+    <div class="card">
+      <div class="card-label">Quotes Submitted</div>
+      <div class="card-value neutral" id="statQuotes">--</div>
+      <div class="card-sub">Quotes sent back</div>
+    </div>
+    <div class="card">
+      <div class="card-label">Fills</div>
+      <div class="card-value neutral" id="statFills">--</div>
+      <div class="card-sub">Executed quotes</div>
+    </div>
+    <div class="card">
+      <div class="card-label">Today P&amp;L</div>
+      <div class="card-value" id="statPnl">--</div>
+      <div class="card-sub" id="pnlSub">Unrealized + realized</div>
+    </div>
+    <div class="card">
+      <div class="card-label">Account Balance</div>
+      <div class="card-value neutral" id="statBalance">--</div>
+      <div class="card-sub">Estimated balance</div>
+    </div>
+  </div>
+
+  <!-- P&L Chart + Risk -->
+  <div class="grid-2">
+    <div class="section">
+      <div class="section-header">P&amp;L Over Time</div>
+      <div class="chart-container">
+        <canvas id="pnlChart"></canvas>
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="section-header">
+        Risk Utilization
+        <span class="section-count" id="riskWarningCount"></span>
+      </div>
+      <div id="riskContent">
+        <div class="empty-state">Loading risk data...</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- RFQs Table -->
+  <div class="grid-full">
+    <div class="section">
+      <div class="section-header">
+        Recent RFQs
+        <span class="section-count" id="rfqCount"></span>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Time</th>
+              <th>Ticker</th>
+              <th>Event</th>
+              <th>Legs</th>
+              <th>Contracts</th>
+              <th>Fair Value</th>
+              <th>Yes Bid</th>
+              <th>No Bid</th>
+              <th>Status</th>
+            </tr>
+          </thead>
+          <tbody id="rfqTableBody">
+            <tr><td colspan="9" class="empty-state">Loading...</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- Positions + Quotes -->
+  <div class="grid-2">
+    <div class="section">
+      <div class="section-header">
+        Open Positions
+        <span class="section-count" id="posCount"></span>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Market</th>
+              <th>Event</th>
+              <th>Side</th>
+              <th>Contracts</th>
+              <th>Avg Entry</th>
+              <th>Exposure</th>
+            </tr>
+          </thead>
+          <tbody id="posTableBody">
+            <tr><td colspan="6" class="empty-state">Loading...</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="section-header">
+        Recent Quotes
+        <span class="section-count" id="quoteCount"></span>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Time</th>
+              <th>Ticker</th>
+              <th>Fair Value</th>
+              <th>Spread</th>
+              <th>Yes Bid</th>
+              <th>Status</th>
+            </tr>
+          </thead>
+          <tbody id="quoteTableBody">
+            <tr><td colspan="6" class="empty-state">Loading...</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+  let pnlChart = null;
+
+  // Format helpers
+  function fmt$(v) {
+    if (v == null) return '--';
+    const n = Number(v);
+    return (n >= 0 ? '+' : '') + '$' + n.toFixed(2);
+  }
+
+  function fmtPct(v) {
+    if (v == null) return '--';
+    return (Number(v) * 100).toFixed(1) + '%';
+  }
+
+  function fmtTime(iso) {
+    if (!iso) return '--';
+    const d = new Date(iso);
+    return d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
+  }
+
+  function fmtDate(iso) {
+    if (!iso) return '--';
+    return iso.slice(0, 10);
+  }
+
+  function pnlClass(v) {
+    const n = Number(v);
+    if (n > 0) return 'positive';
+    if (n < 0) return 'negative';
+    return 'neutral';
+  }
+
+  function statusClass(quoted) {
+    return quoted ? 'status-quoted' : 'status-skipped';
+  }
+
+  function quoteStatusClass(status) {
+    const map = {
+      'open': 'status-open',
+      'executed': 'status-executed',
+      'cancelled': 'status-cancelled',
+      'accepted': 'status-accepted',
+      'confirmed': 'status-accepted',
+    };
+    return map[status] || 'status-open';
+  }
+
+  function riskBarClass(util) {
+    if (util > 0.8) return 'risk-high';
+    if (util > 0.5) return 'risk-medium';
+    return 'risk-low';
+  }
+
+  // Fetch helpers
+  async function fetchJSON(url) {
+    const res = await fetch(url);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    return res.json();
+  }
+
+  // Update stats cards
+  async function updateStats() {
+    try {
+      const data = await fetchJSON('/api/stats');
+
+      document.getElementById('statRfqs').textContent = data.rfqs_seen;
+      document.getElementById('statQuotes').textContent = data.quotes_submitted;
+      document.getElementById('statFills').textContent = data.quotes_filled;
+
+      const pnlEl = document.getElementById('statPnl');
+      pnlEl.textContent = fmt$(data.today_pnl);
+      pnlEl.className = 'card-value ' + pnlClass(data.today_pnl);
+
+      document.getElementById('statBalance').textContent =
+        '$' + Number(data.balance).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+      // Badges
+      const modeBadge = document.getElementById('modeBadge');
+      if (data.paper_mode) {
+        modeBadge.textContent = 'PAPER';
+        modeBadge.className = 'badge badge-paper';
+      } else {
+        modeBadge.textContent = 'LIVE';
+        modeBadge.className = 'badge badge-live';
+      }
+
+      const envBadge = document.getElementById('envBadge');
+      envBadge.textContent = data.env.toUpperCase();
+      envBadge.className = 'badge badge-' + (data.env === 'production' ? 'live' : 'demo');
+
+      const killBadge = document.getElementById('killBadge');
+      killBadge.style.display = data.kill_switch ? 'inline' : 'none';
+    } catch (err) {
+      console.error('Failed to fetch stats:', err);
+    }
+  }
+
+  // Update RFQs table
+  async function updateRFQs() {
+    try {
+      const rfqs = await fetchJSON('/api/rfqs');
+      const tbody = document.getElementById('rfqTableBody');
+      document.getElementById('rfqCount').textContent = rfqs.length + ' rows';
+
+      if (rfqs.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="9" class="empty-state">No RFQs yet</td></tr>';
+        return;
+      }
+
+      tbody.innerHTML = rfqs.map(r => `
+        <tr>
+          <td class="mono">${fmtTime(r.received_at)}</td>
+          <td class="mono">${r.market_ticker || '--'}</td>
+          <td class="mono" style="color:var(--text-secondary)">${r.event_ticker || '--'}</td>
+          <td>${r.num_legs || '--'}</td>
+          <td>${r.contracts_requested || '--'}</td>
+          <td class="mono">${r.computed_fair_value != null ? r.computed_fair_value.toFixed(4) : '--'}</td>
+          <td class="mono">${r.quote_price_yes || '--'}</td>
+          <td class="mono">${r.quote_price_no || '--'}</td>
+          <td><span class="status ${statusClass(r.quoted)}">${r.quoted ? 'Quoted' : 'Skipped'}</span></td>
+        </tr>
+      `).join('');
+    } catch (err) {
+      console.error('Failed to fetch RFQs:', err);
+    }
+  }
+
+  // Update quotes table
+  async function updateQuotes() {
+    try {
+      const quotes = await fetchJSON('/api/quotes');
+      const tbody = document.getElementById('quoteTableBody');
+      document.getElementById('quoteCount').textContent = quotes.length + ' rows';
+
+      if (quotes.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="6" class="empty-state">No quotes yet</td></tr>';
+        return;
+      }
+
+      tbody.innerHTML = quotes.map(q => `
+        <tr>
+          <td class="mono">${fmtTime(q.submitted_at)}</td>
+          <td class="mono">${q.market_ticker || '--'}</td>
+          <td class="mono">${q.fair_value_computed != null ? q.fair_value_computed.toFixed(4) : '--'}</td>
+          <td class="mono">${q.spread_applied != null ? (q.spread_applied * 100).toFixed(1) + '%' : '--'}</td>
+          <td class="mono">${q.yes_bid_dollars || '--'}</td>
+          <td><span class="status ${quoteStatusClass(q.status)}">${q.status}</span></td>
+        </tr>
+      `).join('');
+    } catch (err) {
+      console.error('Failed to fetch quotes:', err);
+    }
+  }
+
+  // Update positions table
+  async function updatePositions() {
+    try {
+      const data = await fetchJSON('/api/positions');
+      const tbody = document.getElementById('posTableBody');
+      document.getElementById('posCount').textContent =
+        data.total_positions + ' positions / $' + data.total_exposure.toFixed(2) + ' exposure';
+
+      if (data.positions.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="6" class="empty-state">No open positions</td></tr>';
+        return;
+      }
+
+      tbody.innerHTML = data.positions.map(p => `
+        <tr>
+          <td class="mono">${p.market_ticker}</td>
+          <td class="mono" style="color:var(--text-secondary)">${p.event_ticker}</td>
+          <td><span class="status ${p.side === 'yes' ? 'status-quoted' : 'status-accepted'}">${p.side.toUpperCase()}</span></td>
+          <td>${p.contracts}</td>
+          <td class="mono">${p.avg_entry_price.toFixed(4)}</td>
+          <td class="mono ${pnlClass(-p.exposure)}">${fmt$(p.exposure)}</td>
+        </tr>
+      `).join('');
+    } catch (err) {
+      console.error('Failed to fetch positions:', err);
+    }
+  }
+
+  // Update risk section
+  async function updateRisk() {
+    try {
+      const data = await fetchJSON('/api/risk');
+      const container = document.getElementById('riskContent');
+      const warningCount = document.getElementById('riskWarningCount');
+
+      if (data.warnings.length > 0) {
+        warningCount.textContent = data.warnings.length + ' warning(s)';
+        warningCount.style.color = 'var(--accent-red)';
+      } else {
+        warningCount.textContent = 'All clear';
+        warningCount.style.color = 'var(--accent-green)';
+      }
+
+      let html = '';
+
+      // Total exposure bar
+      html += `
+        <div class="risk-item">
+          <div class="risk-label">
+            <span>Total Exposure</span>
+            <span>$${data.total_exposure.toFixed(2)} / $${data.max_total_exposure.toFixed(2)}</span>
+          </div>
+          <div class="risk-bar">
+            <div class="risk-bar-fill ${riskBarClass(data.total_utilization)}"
+                 style="width: ${Math.min(data.total_utilization * 100, 100)}%"></div>
+          </div>
+        </div>
+      `;
+
+      // Daily loss bar
+      html += `
+        <div class="risk-item">
+          <div class="risk-label">
+            <span>Daily Loss Used</span>
+            <span>$${Math.abs(Math.min(0, data.today_pnl)).toFixed(2)} / $${data.max_daily_loss.toFixed(2)}</span>
+          </div>
+          <div class="risk-bar">
+            <div class="risk-bar-fill ${riskBarClass(data.daily_loss_utilization)}"
+                 style="width: ${Math.min(data.daily_loss_utilization * 100, 100)}%"></div>
+          </div>
+        </div>
+      `;
+
+      // Per-event exposure bars
+      if (data.exposure_by_event.length > 0) {
+        data.exposure_by_event.forEach(ev => {
+          html += `
+            <div class="risk-item">
+              <div class="risk-label">
+                <span style="font-family:monospace;font-size:12px">${ev.event_ticker}</span>
+                <span>$${ev.exposure.toFixed(2)} / $${ev.limit.toFixed(2)}</span>
+              </div>
+              <div class="risk-bar">
+                <div class="risk-bar-fill ${riskBarClass(ev.utilization)}"
+                     style="width: ${Math.min(ev.utilization * 100, 100)}%"></div>
+              </div>
+            </div>
+          `;
+        });
+      }
+
+      // Warnings
+      if (data.warnings.length > 0) {
+        html += '<div class="warnings">';
+        data.warnings.forEach(w => {
+          html += `<div class="warning-item">Warning: ${w}</div>`;
+        });
+        html += '</div>';
+      }
+
+      container.innerHTML = html;
+    } catch (err) {
+      console.error('Failed to fetch risk:', err);
+    }
+  }
+
+  // Update P&L chart
+  async function updatePnLChart() {
+    try {
+      const data = await fetchJSON('/api/pnl');
+
+      if (data.length === 0) {
+        return;
+      }
+
+      // Sort by date ascending
+      data.sort((a, b) => a.date.localeCompare(b.date));
+
+      const labels = data.map(d => d.date);
+      const values = data.map(d => d.net_pnl);
+
+      // Compute cumulative P&L
+      const cumulative = [];
+      let running = 0;
+      for (const v of values) {
+        running += Number(v);
+        cumulative.push(running);
+      }
+
+      const ctx = document.getElementById('pnlChart').getContext('2d');
+
+      if (pnlChart) {
+        pnlChart.data.labels = labels;
+        pnlChart.data.datasets[0].data = values;
+        pnlChart.data.datasets[1].data = cumulative;
+        pnlChart.update('none');
+      } else {
+        pnlChart = new Chart(ctx, {
+          type: 'line',
+          data: {
+            labels,
+            datasets: [
+              {
+                label: 'Daily P&L',
+                data: values,
+                borderColor: '#4c7cf5',
+                backgroundColor: 'rgba(76, 124, 245, 0.1)',
+                fill: true,
+                tension: 0.3,
+                pointRadius: 3,
+                pointHoverRadius: 5,
+                borderWidth: 2,
+              },
+              {
+                label: 'Cumulative P&L',
+                data: cumulative,
+                borderColor: '#a78bfa',
+                backgroundColor: 'transparent',
+                borderDash: [5, 3],
+                tension: 0.3,
+                pointRadius: 2,
+                pointHoverRadius: 4,
+                borderWidth: 2,
+              }
+            ]
+          },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            interaction: {
+              mode: 'index',
+              intersect: false,
+            },
+            plugins: {
+              legend: {
+                labels: {
+                  color: '#8b8fa3',
+                  font: { size: 11 },
+                  usePointStyle: true,
+                  pointStyle: 'circle',
+                }
+              },
+              tooltip: {
+                backgroundColor: '#1e2235',
+                borderColor: '#2d3154',
+                borderWidth: 1,
+                titleColor: '#e4e6f0',
+                bodyColor: '#8b8fa3',
+                padding: 10,
+                callbacks: {
+                  label: function(ctx) {
+                    return ctx.dataset.label + ': ' + fmt$(ctx.raw);
+                  }
+                }
+              }
+            },
+            scales: {
+              x: {
+                grid: { color: 'rgba(45, 49, 84, 0.5)' },
+                ticks: { color: '#5c6078', font: { size: 10 }, maxTicksLimit: 15 },
+              },
+              y: {
+                grid: { color: 'rgba(45, 49, 84, 0.5)' },
+                ticks: {
+                  color: '#5c6078',
+                  font: { size: 10 },
+                  callback: function(val) { return '$' + val; }
+                },
+              }
+            }
+          }
+        });
+      }
+    } catch (err) {
+      console.error('Failed to fetch P&L:', err);
+    }
+  }
+
+  // Refresh all data
+  async function refreshAll() {
+    await Promise.all([
+      updateStats(),
+      updateRFQs(),
+      updateQuotes(),
+      updatePositions(),
+      updateRisk(),
+      updatePnLChart(),
+    ]);
+    document.getElementById('lastUpdate').textContent =
+      'Updated ' + new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
+  }
+
+  // Initial load + auto-refresh
+  refreshAll();
+  setInterval(refreshAll, 30000);
+</script>
+
+</body>
+</html>
