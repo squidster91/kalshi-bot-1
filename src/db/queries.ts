@@ -297,6 +297,31 @@ export function getSnapshotTickers(since: string): string[] {
   return rows.map((r) => r.ticker);
 }
 
+// ── Price Cache ──
+
+export function upsertPriceCache(ticker: string, midPrice: number): void {
+  const db = getDb();
+  db.prepare(`
+    INSERT INTO price_cache (ticker, mid_price, updated_at)
+    VALUES (?, ?, ?)
+    ON CONFLICT(ticker) DO UPDATE SET mid_price = excluded.mid_price, updated_at = excluded.updated_at
+  `).run(ticker, midPrice, new Date().toISOString());
+}
+
+export function loadPriceCache(): Map<string, { mid: number; ts: number }> {
+  const db = getDb();
+  const rows = db.prepare(`SELECT ticker, mid_price, updated_at FROM price_cache`).all() as Array<{
+    ticker: string;
+    mid_price: number;
+    updated_at: string;
+  }>;
+  const cache = new Map<string, { mid: number; ts: number }>();
+  for (const row of rows) {
+    cache.set(row.ticker, { mid: row.mid_price, ts: new Date(row.updated_at).getTime() });
+  }
+  return cache;
+}
+
 // ── RFQ Outcomes ──
 
 export function insertRFQLegPrices(

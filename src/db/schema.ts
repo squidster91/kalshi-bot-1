@@ -112,6 +112,13 @@ function initSchema(db: Database.Database): void {
       timestamp TEXT NOT NULL
     );
 
+    -- Persistent price cache: latest known price per ticker
+    CREATE TABLE IF NOT EXISTS price_cache (
+      ticker TEXT PRIMARY KEY,
+      mid_price REAL NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+
     -- RFQ outcome tracking: leg prices at RFQ time
     CREATE TABLE IF NOT EXISTS rfq_leg_prices (
       id INTEGER PRIMARY KEY AUTOINCREMENT,

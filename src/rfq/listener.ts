@@ -2,7 +2,7 @@ import { EventEmitter } from 'events';
 import { CommunicationsManager } from '../api/websocket';
 import { OrderbookManager } from '../api/websocket';
 import { MVELeg, getMarket } from '../api/rest';
-import { insertRFQ, insertRFQLegPrices, saveRFQLegPricesSnapshot, markRFQDeleted } from '../db/queries';
+import { insertRFQ, insertRFQLegPrices, saveRFQLegPricesSnapshot, markRFQDeleted, upsertPriceCache, loadPriceCache } from '../db/queries';
 import { logger } from '../logger';
 
 export interface ParsedRFQ {
@@ -30,6 +30,14 @@ export class RFQListener extends EventEmitter {
     super();
     this.comms = comms;
     this.orderbook = orderbook ?? null;
+
+    // Load persistent price cache from database
+    try {
+      this.priceCache = loadPriceCache();
+      logger.info(`Loaded ${this.priceCache.size} cached prices from database`);
+    } catch (err) {
+      logger.warn('Failed to load price cache', { error: String(err) });
+    }
   }
 
   start(): void {
@@ -184,6 +192,8 @@ export class RFQListener extends EventEmitter {
           }
           if (mid !== null) {
             this.priceCache.set(leg.market_ticker, { mid, ts: Date.now() });
+            // Persist to database so it survives restarts
+            try { upsertPriceCache(leg.market_ticker, mid); } catch { /* ok */ }
           }
         } catch (err) {
           const errMsg = String(err);
