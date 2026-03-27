@@ -82,6 +82,7 @@ export class RFQListener extends EventEmitter {
   private totalSeen = 0;
   private botFiltered = 0;
   private playerFiltered = 0;
+  private budgetModeFiltered = 0;
   private lastReportTime = Date.now();
 
   private handleRFQ(msg: Record<string, unknown>): void {
@@ -129,6 +130,13 @@ export class RFQListener extends EventEmitter {
         return;
       }
 
+      // Filter 3: $10 budget-mode bots (exact $10 target cost + 0 contracts)
+      if (parsed.targetCostDollars === 10 && parsed.contractsRequested === 0) {
+        this.budgetModeFiltered++;
+        this.reportFilterStats(now);
+        return;
+      }
+
       this.reportFilterStats(now);
       this.rfqCount++;
 
@@ -166,13 +174,15 @@ export class RFQListener extends EventEmitter {
 
   private reportFilterStats(now: number): void {
     if (now - this.lastReportTime > 30_000 && this.totalSeen > 0) {
-      const passed = this.totalSeen - this.botFiltered - this.playerFiltered;
+      const totalFiltered = this.botFiltered + this.playerFiltered + this.budgetModeFiltered;
+      const passed = this.totalSeen - totalFiltered;
       logger.info('Filter stats', {
         totalSeen: this.totalSeen,
         botFiltered: this.botFiltered,
         playerFiltered: this.playerFiltered,
+        budgetModeFiltered: this.budgetModeFiltered,
         passed,
-        pctFiltered: (((this.botFiltered + this.playerFiltered) / this.totalSeen) * 100).toFixed(1) + '%',
+        pctFiltered: ((totalFiltered / this.totalSeen) * 100).toFixed(1) + '%',
         knownBots: this.knownBots.size,
       });
       this.lastReportTime = now;
