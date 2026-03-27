@@ -208,6 +208,22 @@ function initSchema(db: Database.Database): void {
   } catch (err) {
     logger.warn('Migration check failed', { error: String(err) });
   }
+
+  // One-time migration: purge all old rfqs_seen data (pre-filter era)
+  try {
+    const migrationKey = 'purge_old_rfqs_v1';
+    const applied = db.prepare(`SELECT key FROM migrations WHERE key = ?`).get(migrationKey);
+    if (!applied) {
+      const today = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Los_Angeles' });
+      const result = db.prepare(`DELETE FROM rfqs_seen WHERE received_at < ? || 'T00:00:00'`).run(today);
+      db.prepare(`DELETE FROM rfq_leg_prices WHERE rfq_id NOT IN (SELECT id FROM rfqs_seen)`).run();
+      db.exec(`VACUUM`);
+      db.prepare(`INSERT INTO migrations (key, applied_at) VALUES (?, ?)`).run(migrationKey, new Date().toISOString());
+      logger.info('Migration: purged old rfqs_seen data', { deleted: result.changes });
+    }
+  } catch (err) {
+    logger.warn('Purge migration failed', { error: String(err) });
+  }
 }
 
 export function closeDb(): void {
