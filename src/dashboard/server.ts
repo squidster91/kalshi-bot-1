@@ -13,7 +13,7 @@ const PORT = 3000;
 const serverStartTime = Date.now();
 
 // Filter stats provider — set by index.ts to expose listener stats
-type FilterStats = { totalSeen: number; botFiltered: number; playerFiltered: number; budgetModeFiltered: number; knownBots: number };
+type FilterStats = { totalSeen: number; botFiltered: number; playerFiltered: number; budgetModeFiltered: number; dupeLegFiltered: number; knownBots: number };
 let filterStatsProvider: (() => FilterStats) | null = null;
 export function setFilterStatsProvider(fn: () => FilterStats): void {
   filterStatsProvider = fn;
@@ -549,7 +549,7 @@ app.get('/api/legs-distribution', (_req, res) => {
 // ── API: Live filter stats ──
 app.get('/api/filter-stats', (_req, res) => {
   if (!filterStatsProvider) {
-    res.json({ totalSeen: 0, botFiltered: 0, playerFiltered: 0, budgetModeFiltered: 0, knownBots: 0 });
+    res.json({ totalSeen: 0, botFiltered: 0, playerFiltered: 0, budgetModeFiltered: 0, dupeLegFiltered: 0, knownBots: 0 });
     return;
   }
   res.json(filterStatsProvider());

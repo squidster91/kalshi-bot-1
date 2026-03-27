@@ -78,11 +78,16 @@ export class RFQListener extends EventEmitter {
   // Player prop detection
   private static PLAYER_PROP_PATTERN = /PTS|REB|AST|3PM|TPM|STL|BLK/i;
 
+  // Duplicate leg detection: creator -> Set of leg hashes
+  private creatorLegHashes: Map<string, Map<string, number>> = new Map();
+  private static DUPE_LEG_THRESHOLD = 3; // same leg combo 3+ times from same creator = bot
+
   // Counters for reporting
   private totalSeen = 0;
   private botFiltered = 0;
   private playerFiltered = 0;
   private budgetModeFiltered = 0;
+  private dupeLegFiltered = 0;
   private lastReportTime = Date.now();
 
   private handleRFQ(msg: Record<string, unknown>): void {
@@ -137,6 +142,27 @@ export class RFQListener extends EventEmitter {
         return;
       }
 
+      // Filter 4: Duplicate leg combos from same creator (3+ times = bot)
+      if (creatorId && parsed.legs.length >= 2) {
+        const legHash = this.hashLegs(parsed.legs);
+        let creatorHashes = this.creatorLegHashes.get(creatorId);
+        if (!creatorHashes) {
+          creatorHashes = new Map();
+          this.creatorLegHashes.set(creatorId, creatorHashes);
+        }
+        const count = (creatorHashes.get(legHash) || 0) + 1;
+        creatorHashes.set(legHash, count);
+
+        if (count >= RFQListener.DUPE_LEG_THRESHOLD) {
+          if (count === RFQListener.DUPE_LEG_THRESHOLD) {
+            logger.info('Duplicate leg bot detected', { creatorId, legHash: legHash.slice(0, 16), count });
+          }
+          this.dupeLegFiltered++;
+          this.reportFilterStats(now);
+          return;
+        }
+      }
+
       this.reportFilterStats(now);
       this.rfqCount++;
 
@@ -174,13 +200,14 @@ export class RFQListener extends EventEmitter {
 
   private reportFilterStats(now: number): void {
     if (now - this.lastReportTime > 30_000 && this.totalSeen > 0) {
-      const totalFiltered = this.botFiltered + this.playerFiltered + this.budgetModeFiltered;
+      const totalFiltered = this.botFiltered + this.playerFiltered + this.budgetModeFiltered + this.dupeLegFiltered;
       const passed = this.totalSeen - totalFiltered;
       logger.info('Filter stats', {
         totalSeen: this.totalSeen,
         botFiltered: this.botFiltered,
         playerFiltered: this.playerFiltered,
         budgetModeFiltered: this.budgetModeFiltered,
+        dupeLegFiltered: this.dupeLegFiltered,
         passed,
         pctFiltered: ((totalFiltered / this.totalSeen) * 100).toFixed(1) + '%',
         knownBots: this.knownBots.size,
@@ -354,7 +381,16 @@ export class RFQListener extends EventEmitter {
       botFiltered: this.botFiltered,
       playerFiltered: this.playerFiltered,
       budgetModeFiltered: this.budgetModeFiltered,
+      dupeLegFiltered: this.dupeLegFiltered,
       knownBots: this.knownBots.size,
     };
+  }
+
+  private hashLegs(legs: MVELeg[]): string {
+    // Sort by ticker+side for consistent hashing regardless of leg order
+    const parts = legs
+      .map(l => `${l.market_ticker}:${l.side}`)
+      .sort();
+    return parts.join('|');
   }
 }
