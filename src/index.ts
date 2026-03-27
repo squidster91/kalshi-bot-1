@@ -63,7 +63,7 @@ class KalshiMMBot {
     }
 
     // Fetch active NBA markets and subscribe to orderbooks
-    await this.subscribeToNBAMarkets();
+    await this.subscribeToMarkets();
 
     // Connect WebSockets
     try {
@@ -96,12 +96,12 @@ class KalshiMMBot {
     await sendTelegramMessage(`KalshiMM Bot started (${config.kalshi.env} mode, paper=${config.bot.paperMode})`);
   }
 
-  private async subscribeToNBAMarkets(): Promise<void> {
+  private async subscribeToMarkets(): Promise<void> {
     try {
       const tickers: string[] = [];
       let cursor: string | undefined;
 
-      // Paginate through all active NBA markets
+      // Paginate through all active markets
       do {
         const params: Record<string, string> = {
           status: 'open',
@@ -110,21 +110,18 @@ class KalshiMMBot {
         if (cursor) params.cursor = cursor;
 
         const result = await getMarkets(params);
-        const nbaMarkets = result.markets.filter((m) =>
-          m.ticker.toUpperCase().startsWith('NBA')
-        );
-        tickers.push(...nbaMarkets.map((m) => m.ticker));
+        tickers.push(...result.markets.map((m) => m.ticker));
         cursor = result.cursor || undefined;
       } while (cursor);
 
       if (tickers.length > 0) {
         this.orderbookManager.subscribeMarkets(tickers);
-        logger.info(`Subscribed to ${tickers.length} NBA markets`);
+        logger.info(`Subscribed to ${tickers.length} markets`);
       } else {
-        logger.warn('No active NBA markets found');
+        logger.warn('No active markets found');
       }
     } catch (err) {
-      logger.error('Failed to fetch NBA markets', { error: String(err) });
+      logger.error('Failed to fetch markets', { error: String(err) });
     }
   }
 

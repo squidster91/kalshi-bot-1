@@ -90,15 +90,6 @@ export class RFQListener extends EventEmitter {
       return null;
     }
 
-    // Only process NBA combos for now
-    const isNBA = legs.some((l) =>
-      l.market_ticker?.toUpperCase().startsWith('NBA')
-    );
-    if (!isNBA) {
-      logger.debug('RFQ is not NBA, skipping', { id });
-      return null;
-    }
-
     const contractsFp = msg.contracts_fp as string ?? '0';
     const targetCost = msg.target_cost_dollars as string ?? '0';
 
