@@ -12,7 +12,9 @@ const PORT = 3000;
 
 // Serve static dashboard
 app.get('/', (_req, res) => {
-  res.sendFile(path.join(__dirname, 'index.html'));
+  // HTML file stays in src/, not compiled to dist/
+  const htmlPath = path.join(__dirname, '..', '..', 'src', 'dashboard', 'index.html');
+  res.sendFile(htmlPath);
 });
 
 // ── API: Today's stats ──
