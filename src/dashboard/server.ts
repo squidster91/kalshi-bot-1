@@ -295,6 +295,20 @@ app.get('/api/rfq-categories', (_req, res) => {
 
     const teamOnly = total - hasPlayers;
 
+    // Count $10 budget-mode RFQs (team-only, $10 exact + 0 contracts)
+    let budget10 = 0;
+    try {
+      const b10Row = db.prepare(`
+        SELECT COUNT(*) as cnt FROM rfqs_seen
+        WHERE received_at LIKE ? || '%' AND has_player_props = 0
+          AND CAST(target_cost_dollars AS REAL) = 10
+          AND (contracts_requested = '0' OR contracts_requested IS NULL OR contracts_requested = '')
+      `).get(today) as { cnt: number } | undefined;
+      budget10 = b10Row?.cnt || 0;
+    } catch { /* ok */ }
+
+    const afterAllFilters = teamOnly - budget10;
+
     res.json({
       categories,
       avg_legs: teamOnly > 0 ? totalLegs / total : 0,
@@ -302,6 +316,8 @@ app.get('/api/rfq-categories', (_req, res) => {
       team_only: teamOnly,
       has_players: hasPlayers,
       known_bots: knownBots,
+      budget_10_filtered: budget10,
+      after_all_filters: afterAllFilters,
     });
   } catch (err) {
     logger.error('Dashboard /api/rfq-categories error', { error: String(err) });
@@ -507,6 +523,25 @@ app.get('/api/backtest', (_req, res) => {
     });
   } catch (err) {
     logger.error('Dashboard /api/backtest error', { error: String(err) });
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// ── API: Legs distribution (team-only, post high-freq bot filter) ──
+app.get('/api/legs-distribution', (_req, res) => {
+  try {
+    const db = getDb();
+    const today = new Date().toISOString().slice(0, 10);
+    const rows = db.prepare(`
+      SELECT num_legs, COUNT(*) as count
+      FROM rfqs_seen
+      WHERE received_at LIKE ? || '%' AND has_player_props = 0
+      GROUP BY num_legs
+      ORDER BY num_legs
+    `).all(today) as Array<{ num_legs: number; count: number }>;
+    res.json(rows.filter(r => r.num_legs > 0));
+  } catch (err) {
+    logger.error('Dashboard /api/legs-distribution error', { error: String(err) });
     res.status(500).json({ error: 'Internal server error' });
   }
 });

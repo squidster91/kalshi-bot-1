@@ -578,10 +578,18 @@
 
     <!-- Budget Distribution -->
     <div class="panel-section">
-      <div class="section-header">Budget Distribution <span style="font-size:10px;color:var(--text-muted);font-weight:400">(team-only, post bot-filter)</span></div>
+      <div class="section-header">Budget Distribution <span style="font-size:10px;color:var(--text-muted);font-weight:400">(team-only, high-freq bot filter only)</span></div>
       <div id="budgetStats" style="font-size:11px;color:var(--text-secondary);padding:0 0 6px 0"></div>
       <div class="chart-container">
         <canvas id="budgetChart"></canvas>
+      </div>
+    </div>
+
+    <!-- Legs Distribution -->
+    <div class="panel-section">
+      <div class="section-header">Legs Distribution <span style="font-size:10px;color:var(--text-muted);font-weight:400">(team-only, high-freq bot filter only)</span></div>
+      <div class="chart-container">
+        <canvas id="legsChart"></canvas>
       </div>
     </div>
 
@@ -602,6 +610,7 @@
 <script>
   let volumeChart = null;
   let budgetChart = null;
+  let legsChart = null;
 
   // ── Helpers ──
 
@@ -952,10 +961,10 @@
       const container = document.getElementById('categoriesList');
       const countEl = document.getElementById('catCount');
 
-      const filtered = data.team_only || 0;
+      const afterAll = data.after_all_filters || 0;
       const raw = data.total_rfqs || 0;
-      const filteredOut = raw - filtered;
-      document.getElementById('sumRfqs').textContent = filtered.toLocaleString();
+      const filteredOut = raw - afterAll;
+      document.getElementById('sumRfqs').textContent = afterAll.toLocaleString();
       document.getElementById('sumAvgLegs').textContent = data.avg_legs ? data.avg_legs.toFixed(1) : '--';
       document.getElementById('sumRawTotal').textContent = raw.toLocaleString();
       document.getElementById('sumFilteredPct').textContent = raw > 0 ? ((filteredOut / raw) * 100).toFixed(0) + '%' : '--';
@@ -1097,6 +1106,72 @@
     }
   }
 
+  // ── Update Legs Distribution Chart ──
+
+  async function updateLegsChart() {
+    try {
+      const data = await fetchJSON('/api/legs-distribution');
+      if (!data || data.length === 0) return;
+
+      const labels = data.map(d => d.num_legs + ' legs');
+      const values = data.map(d => d.count);
+
+      const ctx = document.getElementById('legsChart').getContext('2d');
+
+      if (legsChart) {
+        legsChart.data.labels = labels;
+        legsChart.data.datasets[0].data = values;
+        legsChart.update('none');
+      } else {
+        legsChart = new Chart(ctx, {
+          type: 'bar',
+          data: {
+            labels,
+            datasets: [{
+              data: values,
+              backgroundColor: 'rgba(34,197,94,0.5)',
+              borderColor: 'rgba(34,197,94,0.8)',
+              borderWidth: 1,
+              borderRadius: 2,
+            }]
+          },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+              legend: { display: false },
+              tooltip: {
+                backgroundColor: '#161921',
+                borderColor: '#2a3050',
+                borderWidth: 1,
+                titleColor: '#e8eaf0',
+                bodyColor: '#7c8190',
+                padding: 8,
+                displayColors: false,
+                callbacks: {
+                  label: ctx => ctx.raw.toLocaleString() + ' RFQs'
+                }
+              }
+            },
+            scales: {
+              x: {
+                grid: { display: false },
+                ticks: { color: '#4a4f62', font: { size: 9 } },
+              },
+              y: {
+                grid: { color: 'rgba(30,34,48,0.8)' },
+                ticks: { color: '#4a4f62', font: { size: 9 }, maxTicksLimit: 5 },
+                beginAtZero: true,
+              }
+            }
+          }
+        });
+      }
+    } catch (err) {
+      console.error('Failed to fetch legs distribution:', err);
+    }
+  }
+
   // ── Refresh All ──
 
   async function refreshAll() {
@@ -1106,6 +1181,7 @@
       updateVolumeChart(),
       updateCategories(),
       updateBudgetChart(),
+      updateLegsChart(),
       updateFilterStats(),
     ]);
     document.getElementById('lastUpdate').textContent =
