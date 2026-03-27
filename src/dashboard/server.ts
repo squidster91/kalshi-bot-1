@@ -224,7 +224,7 @@ app.get('/api/rfq-volume', (_req, res) => {
       d.setMinutes(0, 0, 0);
       d.setHours(d.getHours() - i);
       const hourKey = d.toISOString().slice(0, 13) + ':00:00';
-      const label = d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false });
+      const label = d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false, timeZone: 'America/Los_Angeles' });
       const match = rows.find(r => r.hour === hourKey);
       result.push({
         hour: hourKey,

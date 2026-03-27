@@ -364,7 +364,7 @@
     <div class="section">
       <div class="section-header">
         RFQ Volume by Hour of Day (all-time)
-        <span class="section-count">UTC</span>
+        <span class="section-count">Pacific</span>
       </div>
       <div class="chart-container">
         <canvas id="hourChart"></canvas>
@@ -441,7 +441,8 @@
     const d = new Date(iso);
     return d.toLocaleString('en-US', {
       month: 'short', day: 'numeric',
-      hour: '2-digit', minute: '2-digit', hour12: false
+      hour: '2-digit', minute: '2-digit', hour12: false,
+      timeZone: 'America/Los_Angeles'
     });
   }
 
@@ -744,7 +745,7 @@
       updateOutcomes(),
     ]);
     document.getElementById('lastUpdate').textContent =
-      'Updated ' + new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
+      'Updated ' + new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false, timeZone: 'America/Los_Angeles' }) + ' PT';
   }
 
   refreshAll();
