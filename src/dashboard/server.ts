@@ -10,6 +10,8 @@ import { logger } from '../logger';
 const app = express();
 const PORT = 3000;
 
+const serverStartTime = Date.now();
+
 // Serve static dashboard
 app.get('/', (_req, res) => {
   // HTML file stays in src/, not compiled to dist/
@@ -22,7 +24,6 @@ app.get('/api/stats', (_req, res) => {
   try {
     const stats = getTodayStats();
     const pnl = getTodayPnL();
-    const riskUtil = getRiskUtilization();
 
     let balance: number | null = null;
     try {
@@ -47,10 +48,11 @@ app.get('/api/stats', (_req, res) => {
       quoting_enabled: config.bot.quotingEnabled,
       env: config.kalshi.env,
       kill_switch: isKillSwitchActive(),
+      uptime_ms: Date.now() - serverStartTime,
       risk_utilization: {
-        daily_loss: riskUtil.dailyLossUtilization,
-        total_exposure: riskUtil.totalExposureUtilization,
-        warnings: riskUtil.warnings,
+        daily_loss: getRiskUtilization().dailyLossUtilization,
+        total_exposure: getRiskUtilization().totalExposureUtilization,
+        warnings: getRiskUtilization().warnings,
       },
     });
   } catch (err) {
@@ -59,7 +61,7 @@ app.get('/api/stats', (_req, res) => {
   }
 });
 
-// ── API: Recent RFQs ──
+// ── API: Recent RFQs (increased to 500) ──
 app.get('/api/rfqs', (_req, res) => {
   try {
     const db = getDb();
@@ -70,7 +72,7 @@ app.get('/api/rfqs', (_req, res) => {
              num_legs, is_same_game
       FROM rfqs_seen
       ORDER BY received_at DESC
-      LIMIT 100
+      LIMIT 500
     `).all();
     res.json(rfqs);
   } catch (err) {
@@ -197,6 +199,127 @@ app.get('/api/positions', (_req, res) => {
     res.status(500).json({ error: 'Internal server error' });
   }
 });
+
+// ── API: RFQ volume per hour (last 24h) ──
+app.get('/api/rfq-volume', (_req, res) => {
+  try {
+    const db = getDb();
+    const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+
+    const rows = db.prepare(`
+      SELECT
+        strftime('%Y-%m-%dT%H:00:00', received_at) as hour,
+        COUNT(*) as count
+      FROM rfqs_seen
+      WHERE received_at >= ?
+      GROUP BY strftime('%Y-%m-%dT%H:00:00', received_at)
+      ORDER BY hour ASC
+    `).all(since) as Array<{ hour: string; count: number }>;
+
+    // Fill in missing hours with zero
+    const result: Array<{ hour: string; label: string; count: number }> = [];
+    const now = new Date();
+    for (let i = 23; i >= 0; i--) {
+      const d = new Date(now);
+      d.setMinutes(0, 0, 0);
+      d.setHours(d.getHours() - i);
+      const hourKey = d.toISOString().slice(0, 13) + ':00:00';
+      const label = d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false });
+      const match = rows.find(r => r.hour === hourKey);
+      result.push({
+        hour: hourKey,
+        label,
+        count: match ? match.count : 0,
+      });
+    }
+
+    res.json(result);
+  } catch (err) {
+    logger.error('Dashboard /api/rfq-volume error', { error: String(err) });
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// ── API: RFQ categories breakdown ──
+app.get('/api/rfq-categories', (_req, res) => {
+  try {
+    const db = getDb();
+    const today = new Date().toISOString().slice(0, 10);
+
+    const rows = db.prepare(`
+      SELECT market_ticker, COUNT(*) as count
+      FROM rfqs_seen
+      WHERE received_at LIKE ? || '%'
+      GROUP BY market_ticker
+    `).all(today) as Array<{ market_ticker: string; count: number }>;
+
+    // Aggregate by category parsed from ticker prefix
+    const categories: Record<string, number> = {};
+    let totalLegs = 0;
+    let totalRfqs = 0;
+
+    const allRows = db.prepare(`
+      SELECT num_legs FROM rfqs_seen WHERE received_at LIKE ? || '%'
+    `).all(today) as Array<{ num_legs: number | null }>;
+
+    for (const r of allRows) {
+      totalRfqs++;
+      totalLegs += r.num_legs || 0;
+    }
+
+    for (const row of rows) {
+      const cat = parseCategory(row.market_ticker || '');
+      categories[cat] = (categories[cat] || 0) + row.count;
+    }
+
+    res.json({
+      categories,
+      avg_legs: totalRfqs > 0 ? totalLegs / totalRfqs : 0,
+      total_rfqs: totalRfqs,
+    });
+  } catch (err) {
+    logger.error('Dashboard /api/rfq-categories error', { error: String(err) });
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// Parse a market ticker into a human-readable category
+function parseCategory(ticker: string): string {
+  if (!ticker) return 'Unknown';
+  const t = ticker.toUpperCase();
+
+  // Multi-event combos
+  if (t.startsWith('KXMVE-') || t.includes('CROSS')) return 'Cross-Category';
+
+  // KX prefix combos
+  if (t.startsWith('KX')) {
+    if (t.includes('NBA')) return 'NBA Multi-Game';
+    if (t.includes('NFL')) return 'NFL Multi-Game';
+    if (t.includes('MLB')) return 'MLB Multi-Game';
+    if (t.includes('NHL')) return 'NHL Multi-Game';
+    if (t.includes('SOCCER') || t.includes('MLS') || t.includes('EPL')) return 'Soccer Multi-Game';
+    if (t.includes('NCAAB') || t.includes('CBB')) return 'NCAAB Multi-Game';
+    if (t.includes('NCAAF') || t.includes('CFB')) return 'NCAAF Multi-Game';
+    return 'Multi-Game Combo';
+  }
+
+  // Single-event sport tickers
+  if (t.includes('NBA')) return 'NBA Game';
+  if (t.includes('NFL')) return 'NFL Game';
+  if (t.includes('MLB')) return 'MLB Game';
+  if (t.includes('NHL')) return 'NHL Game';
+  if (t.includes('SOCCER') || t.includes('MLS') || t.includes('EPL')) return 'Soccer';
+  if (t.includes('NCAAB') || t.includes('CBB')) return 'NCAAB';
+  if (t.includes('NCAAF') || t.includes('CFB')) return 'NCAAF';
+
+  // Non-sports
+  if (t.includes('PRES') || t.includes('ELECT') || t.includes('GOV')) return 'Politics';
+  if (t.includes('CPI') || t.includes('GDP') || t.includes('ECON') || t.includes('FED')) return 'Economics';
+  if (t.includes('WEATHER') || t.includes('TEMP')) return 'Weather';
+  if (t.includes('CRYPTO') || t.includes('BTC') || t.includes('ETH')) return 'Crypto';
+
+  return 'Other';
+}
 
 export function startDashboard(): void {
   app.listen(PORT, () => {

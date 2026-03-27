@@ -4,490 +4,612 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>KalshiMM Dashboard</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 <style>
   :root {
-    --bg-primary: #0f1117;
-    --bg-secondary: #1a1d2e;
-    --bg-card: #1e2235;
-    --bg-hover: #262a40;
-    --border: #2d3154;
-    --text-primary: #e4e6f0;
-    --text-secondary: #8b8fa3;
-    --text-muted: #5c6078;
+    --bg-primary: #0a0c10;
+    --bg-secondary: #12141c;
+    --bg-card: #161923;
+    --bg-hover: #1e2130;
+    --bg-row-alt: #13151d;
+    --border: #252838;
+    --text-primary: #e2e4ec;
+    --text-secondary: #7c8198;
+    --text-muted: #4e5268;
     --accent-blue: #4c7cf5;
-    --accent-green: #34d399;
-    --accent-red: #f87171;
-    --accent-yellow: #fbbf24;
+    --accent-green: #22c55e;
+    --accent-red: #ef4444;
+    --accent-yellow: #eab308;
     --accent-purple: #a78bfa;
+    --accent-cyan: #06b6d4;
+    --accent-orange: #f97316;
   }
 
   * { margin: 0; padding: 0; box-sizing: border-box; }
 
   body {
-    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', sans-serif;
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
     background: var(--bg-primary);
     color: var(--text-primary);
-    line-height: 1.5;
+    line-height: 1.4;
     min-height: 100vh;
+    font-size: 13px;
   }
 
-  /* Header */
+  /* ── Header ── */
   .header {
     background: var(--bg-secondary);
     border-bottom: 1px solid var(--border);
-    padding: 16px 32px;
+    padding: 8px 20px;
     display: flex;
     align-items: center;
     justify-content: space-between;
+    height: 42px;
   }
 
   .header-left {
     display: flex;
     align-items: center;
-    gap: 16px;
+    gap: 10px;
   }
 
-  .header h1 {
-    font-size: 20px;
-    font-weight: 600;
+  .logo {
+    font-size: 14px;
+    font-weight: 700;
     letter-spacing: -0.3px;
+    color: var(--accent-blue);
   }
 
   .badge {
-    padding: 3px 10px;
-    border-radius: 12px;
-    font-size: 11px;
+    padding: 2px 7px;
+    border-radius: 3px;
+    font-size: 10px;
     font-weight: 600;
     text-transform: uppercase;
     letter-spacing: 0.5px;
   }
 
-  .badge-paper {
-    background: rgba(251, 191, 36, 0.15);
-    color: var(--accent-yellow);
-    border: 1px solid rgba(251, 191, 36, 0.3);
-  }
-
-  .badge-live {
-    background: rgba(52, 211, 153, 0.15);
-    color: var(--accent-green);
-    border: 1px solid rgba(52, 211, 153, 0.3);
-  }
-
-  .badge-demo {
-    background: rgba(167, 139, 250, 0.15);
-    color: var(--accent-purple);
-    border: 1px solid rgba(167, 139, 250, 0.3);
-  }
-
-  .badge-kill {
-    background: rgba(248, 113, 113, 0.15);
-    color: var(--accent-red);
-    border: 1px solid rgba(248, 113, 113, 0.3);
-  }
+  .badge-paper { background: rgba(234, 179, 8, 0.15); color: var(--accent-yellow); border: 1px solid rgba(234, 179, 8, 0.25); }
+  .badge-live { background: rgba(34, 197, 94, 0.15); color: var(--accent-green); border: 1px solid rgba(34, 197, 94, 0.25); }
+  .badge-demo { background: rgba(167, 139, 250, 0.15); color: var(--accent-purple); border: 1px solid rgba(167, 139, 250, 0.25); }
+  .badge-production { background: rgba(34, 197, 94, 0.15); color: var(--accent-green); border: 1px solid rgba(34, 197, 94, 0.25); }
+  .badge-kill { background: rgba(239, 68, 68, 0.15); color: var(--accent-red); border: 1px solid rgba(239, 68, 68, 0.25); }
 
   .header-right {
     display: flex;
     align-items: center;
-    gap: 12px;
+    gap: 10px;
+    font-size: 11px;
     color: var(--text-secondary);
-    font-size: 13px;
   }
 
   .status-dot {
-    width: 8px;
-    height: 8px;
+    width: 6px;
+    height: 6px;
     border-radius: 50%;
     background: var(--accent-green);
     display: inline-block;
     animation: pulse 2s infinite;
   }
 
-  @keyframes pulse {
-    0%, 100% { opacity: 1; }
-    50% { opacity: 0.4; }
-  }
+  @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
 
-  /* Main layout */
-  .container {
-    max-width: 1440px;
-    margin: 0 auto;
-    padding: 24px 32px;
-  }
-
-  /* Stats cards */
-  .cards-row {
-    display: grid;
-    grid-template-columns: repeat(5, 1fr);
-    gap: 16px;
-    margin-bottom: 24px;
-  }
-
-  .card {
+  .btn-refresh {
     background: var(--bg-card);
     border: 1px solid var(--border);
-    border-radius: 10px;
-    padding: 20px;
+    color: var(--text-secondary);
+    padding: 3px 10px;
+    border-radius: 4px;
+    font-size: 11px;
+    cursor: pointer;
+    font-family: inherit;
+    transition: all 0.15s;
+  }
+  .btn-refresh:hover { background: var(--bg-hover); color: var(--text-primary); }
+
+  /* ── Stats Bar ── */
+  .stats-bar {
+    display: flex;
+    align-items: center;
+    gap: 0;
+    background: var(--bg-secondary);
+    border-bottom: 1px solid var(--border);
+    padding: 0 20px;
+    height: 38px;
+    overflow-x: auto;
   }
 
-  .card-label {
-    font-size: 12px;
+  .stat-item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 0 16px;
+    border-right: 1px solid var(--border);
+    white-space: nowrap;
+    height: 100%;
+  }
+
+  .stat-item:first-child { padding-left: 0; }
+  .stat-item:last-child { border-right: none; }
+
+  .stat-label {
+    font-size: 10px;
     font-weight: 500;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: var(--text-muted);
+  }
+
+  .stat-value {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-primary);
+  }
+
+  .positive { color: var(--accent-green); }
+  .negative { color: var(--accent-red); }
+
+  /* ── Main Layout ── */
+  .main-layout {
+    display: flex;
+    height: calc(100vh - 80px);
+    overflow: hidden;
+  }
+
+  .main-content {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    min-width: 0;
+  }
+
+  /* ── Chart Row ── */
+  .chart-row {
+    padding: 12px 20px;
+    border-bottom: 1px solid var(--border);
+    height: 200px;
+    min-height: 200px;
+    flex-shrink: 0;
+  }
+
+  .chart-header {
+    font-size: 11px;
+    font-weight: 600;
     text-transform: uppercase;
     letter-spacing: 0.5px;
     color: var(--text-secondary);
     margin-bottom: 8px;
   }
 
-  .card-value {
-    font-size: 28px;
-    font-weight: 700;
-    letter-spacing: -0.5px;
+  .chart-container {
+    height: calc(100% - 24px);
+    position: relative;
   }
 
-  .card-sub {
-    font-size: 12px;
-    color: var(--text-muted);
-    margin-top: 4px;
-  }
-
-  .positive { color: var(--accent-green); }
-  .negative { color: var(--accent-red); }
-  .neutral { color: var(--text-primary); }
-
-  /* Two-column layout */
-  .grid-2 {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 24px;
-    margin-bottom: 24px;
-  }
-
-  .grid-full {
-    margin-bottom: 24px;
-  }
-
-  /* Section cards */
-  .section {
-    background: var(--bg-card);
-    border: 1px solid var(--border);
-    border-radius: 10px;
+  /* ── RFQ Table Section ── */
+  .table-section {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
     overflow: hidden;
+    min-height: 0;
   }
 
-  .section-header {
-    padding: 16px 20px;
-    border-bottom: 1px solid var(--border);
-    font-size: 14px;
-    font-weight: 600;
+  .table-header {
     display: flex;
     align-items: center;
     justify-content: space-between;
+    padding: 8px 20px;
+    border-bottom: 1px solid var(--border);
+    background: var(--bg-secondary);
+    flex-shrink: 0;
   }
 
-  .section-count {
+  .table-header-left {
     font-size: 12px;
-    color: var(--text-secondary);
-    font-weight: 400;
+    font-weight: 600;
+    color: var(--text-primary);
   }
 
-  /* Tables */
+  .table-header-right {
+    font-size: 11px;
+    color: var(--text-muted);
+  }
+
   .table-wrap {
-    overflow-x: auto;
-    max-height: 400px;
-    overflow-y: auto;
+    flex: 1;
+    overflow: auto;
   }
 
   table {
     width: 100%;
     border-collapse: collapse;
-    font-size: 13px;
+    font-size: 12px;
   }
 
   thead th {
     position: sticky;
     top: 0;
+    z-index: 10;
     background: var(--bg-secondary);
-    padding: 10px 14px;
+    padding: 6px 10px;
     text-align: left;
     font-weight: 600;
-    color: var(--text-secondary);
-    font-size: 11px;
+    color: var(--text-muted);
+    font-size: 10px;
     text-transform: uppercase;
     letter-spacing: 0.5px;
     border-bottom: 1px solid var(--border);
-  }
-
-  tbody td {
-    padding: 9px 14px;
-    border-bottom: 1px solid rgba(45, 49, 84, 0.5);
     white-space: nowrap;
   }
 
-  tbody tr:hover {
-    background: var(--bg-hover);
-  }
-
-  .mono {
-    font-family: 'SF Mono', 'Fira Code', 'Cascadia Code', monospace;
+  tbody td {
+    padding: 4px 10px;
+    border-bottom: 1px solid rgba(37, 40, 56, 0.5);
+    white-space: nowrap;
     font-size: 12px;
   }
 
-  /* Status badges for table */
-  .status {
-    padding: 2px 8px;
-    border-radius: 4px;
+  tbody tr:nth-child(even) { background: var(--bg-row-alt); }
+  tbody tr:hover { background: var(--bg-hover); }
+  tbody tr.high-legs { background: rgba(76, 124, 245, 0.06); }
+  tbody tr.high-legs:hover { background: rgba(76, 124, 245, 0.1); }
+
+  .mono {
+    font-family: 'JetBrains Mono', monospace;
     font-size: 11px;
+  }
+
+  .status {
+    padding: 1px 6px;
+    border-radius: 3px;
+    font-size: 10px;
     font-weight: 600;
   }
 
   .status-quoted { background: rgba(76, 124, 245, 0.15); color: var(--accent-blue); }
-  .status-skipped { background: rgba(92, 96, 120, 0.2); color: var(--text-muted); }
-  .status-open { background: rgba(76, 124, 245, 0.15); color: var(--accent-blue); }
-  .status-executed { background: rgba(52, 211, 153, 0.15); color: var(--accent-green); }
-  .status-cancelled { background: rgba(248, 113, 113, 0.15); color: var(--accent-red); }
-  .status-accepted { background: rgba(251, 191, 36, 0.15); color: var(--accent-yellow); }
+  .status-skipped { background: rgba(78, 82, 104, 0.2); color: var(--text-muted); }
 
-  /* Risk bars */
-  .risk-item {
-    padding: 14px 20px;
-    border-bottom: 1px solid rgba(45, 49, 84, 0.5);
+  .text-muted { color: var(--text-muted); }
+  .text-secondary { color: var(--text-secondary); }
+  .text-accent { color: var(--accent-blue); }
+
+  /* Legs tooltip */
+  .legs-cell {
+    position: relative;
+    cursor: default;
   }
 
-  .risk-item:last-child { border-bottom: none; }
+  .legs-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+  }
 
-  .risk-label {
+  .legs-detail-btn {
+    display: inline-block;
+    width: 14px;
+    height: 14px;
+    line-height: 14px;
+    text-align: center;
+    border-radius: 3px;
+    background: rgba(76, 124, 245, 0.15);
+    color: var(--accent-blue);
+    font-size: 9px;
+    font-weight: 700;
+    cursor: pointer;
+    user-select: none;
+  }
+
+  .legs-detail-btn:hover { background: rgba(76, 124, 245, 0.3); }
+
+  .legs-tooltip {
+    display: none;
+    position: fixed;
+    z-index: 1000;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 10px 12px;
+    max-width: 420px;
+    min-width: 250px;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.5);
+    font-size: 11px;
+    pointer-events: none;
+  }
+
+  .legs-tooltip.visible {
+    display: block;
+  }
+
+  .legs-tooltip-title {
+    font-weight: 600;
+    color: var(--text-secondary);
+    margin-bottom: 6px;
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+
+  .leg-item {
+    padding: 3px 0;
+    border-bottom: 1px solid rgba(37, 40, 56, 0.5);
+    color: var(--text-primary);
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+  }
+
+  .leg-item:last-child { border-bottom: none; }
+
+  /* ── Sidebar ── */
+  .sidebar {
+    width: 280px;
+    min-width: 280px;
+    border-left: 1px solid var(--border);
+    background: var(--bg-secondary);
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .sidebar-section {
+    padding: 14px 16px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .sidebar-title {
+    font-size: 10px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: var(--text-muted);
+    margin-bottom: 10px;
+  }
+
+  .sidebar-stat {
     display: flex;
     justify-content: space-between;
-    margin-bottom: 8px;
-    font-size: 13px;
-  }
-
-  .risk-label span:first-child { color: var(--text-primary); }
-  .risk-label span:last-child { color: var(--text-secondary); font-family: monospace; font-size: 12px; }
-
-  .risk-bar {
-    height: 6px;
-    background: rgba(45, 49, 84, 0.8);
-    border-radius: 3px;
-    overflow: hidden;
-  }
-
-  .risk-bar-fill {
-    height: 100%;
-    border-radius: 3px;
-    transition: width 0.5s ease;
-  }
-
-  .risk-low { background: var(--accent-green); }
-  .risk-medium { background: var(--accent-yellow); }
-  .risk-high { background: var(--accent-red); }
-
-  /* Chart */
-  .chart-container {
-    padding: 20px;
-    height: 300px;
-    position: relative;
-  }
-
-  /* Warnings */
-  .warnings {
-    padding: 12px 20px;
-    background: rgba(248, 113, 113, 0.08);
-    border-top: 1px solid rgba(248, 113, 113, 0.2);
-  }
-
-  .warning-item {
-    color: var(--accent-red);
+    padding: 4px 0;
     font-size: 12px;
-    padding: 2px 0;
   }
 
-  /* Empty states */
+  .sidebar-stat-label { color: var(--text-secondary); }
+  .sidebar-stat-value { font-family: 'JetBrains Mono', monospace; font-weight: 500; color: var(--text-primary); }
+
+  .category-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 3px 0;
+    font-size: 11px;
+  }
+
+  .category-name {
+    color: var(--text-secondary);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    max-width: 160px;
+  }
+
+  .category-count {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    color: var(--text-primary);
+    font-weight: 500;
+  }
+
+  .category-bar-wrap {
+    height: 3px;
+    background: rgba(37, 40, 56, 0.8);
+    border-radius: 2px;
+    margin-top: 2px;
+    margin-bottom: 4px;
+  }
+
+  .category-bar {
+    height: 100%;
+    border-radius: 2px;
+    background: var(--accent-blue);
+    transition: width 0.3s;
+  }
+
+  .donut-wrap {
+    display: flex;
+    justify-content: center;
+    margin-bottom: 10px;
+  }
+
+  .donut-wrap canvas {
+    max-width: 160px;
+    max-height: 160px;
+  }
+
+  /* ── Footer ── */
+  .footer {
+    background: var(--bg-secondary);
+    border-top: 1px solid var(--border);
+    padding: 4px 20px;
+    font-size: 10px;
+    color: var(--text-muted);
+    text-align: center;
+    flex-shrink: 0;
+  }
+
+  /* ── Empty state ── */
   .empty-state {
-    padding: 40px 20px;
+    padding: 30px 20px;
     text-align: center;
     color: var(--text-muted);
-    font-size: 13px;
+    font-size: 12px;
   }
 
-  /* Responsive */
-  @media (max-width: 1200px) {
-    .cards-row { grid-template-columns: repeat(3, 1fr); }
-    .grid-2 { grid-template-columns: 1fr; }
-  }
+  /* ── Scrollbar ── */
+  ::-webkit-scrollbar { width: 6px; height: 6px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+  ::-webkit-scrollbar-thumb:hover { background: var(--text-muted); }
 
-  @media (max-width: 768px) {
-    .cards-row { grid-template-columns: repeat(2, 1fr); }
-    .container { padding: 16px; }
-    .header { padding: 12px 16px; }
+  /* ── Responsive ── */
+  @media (max-width: 1100px) {
+    .sidebar { display: none; }
   }
 </style>
 </head>
 <body>
 
+<!-- Header -->
 <div class="header">
   <div class="header-left">
-    <h1>KalshiMM Dashboard</h1>
+    <span class="logo">KalshiMM</span>
     <span id="modeBadge" class="badge badge-paper">PAPER</span>
     <span id="envBadge" class="badge badge-demo">DEMO</span>
     <span id="killBadge" class="badge badge-kill" style="display:none">KILL SWITCH</span>
   </div>
   <div class="header-right">
     <span class="status-dot"></span>
-    <span>Auto-refresh 30s</span>
-    <span id="lastUpdate" style="margin-left:8px">--</span>
+    <span id="lastUpdate">--</span>
+    <button class="btn-refresh" onclick="refreshAll()">Refresh</button>
   </div>
 </div>
 
-<div class="container">
-
-  <!-- Stats Cards -->
-  <div class="cards-row">
-    <div class="card">
-      <div class="card-label">RFQs Seen Today</div>
-      <div class="card-value neutral" id="statRfqs">--</div>
-      <div class="card-sub">Combo requests received</div>
-    </div>
-    <div class="card">
-      <div class="card-label">Quotes Submitted</div>
-      <div class="card-value neutral" id="statQuotes">--</div>
-      <div class="card-sub">Quotes sent back</div>
-    </div>
-    <div class="card">
-      <div class="card-label">Fills</div>
-      <div class="card-value neutral" id="statFills">--</div>
-      <div class="card-sub">Executed quotes</div>
-    </div>
-    <div class="card">
-      <div class="card-label">Today P&amp;L</div>
-      <div class="card-value" id="statPnl">--</div>
-      <div class="card-sub" id="pnlSub">Unrealized + realized</div>
-    </div>
-    <div class="card">
-      <div class="card-label">Account Balance</div>
-      <div class="card-value neutral" id="statBalance">--</div>
-      <div class="card-sub">Estimated balance</div>
-    </div>
+<!-- Stats Bar -->
+<div class="stats-bar">
+  <div class="stat-item">
+    <span class="stat-label">RFQs Today</span>
+    <span class="stat-value" id="statRfqs">--</span>
   </div>
+  <div class="stat-item">
+    <span class="stat-label">Quotes</span>
+    <span class="stat-value" id="statQuotes">--</span>
+  </div>
+  <div class="stat-item">
+    <span class="stat-label">Fills</span>
+    <span class="stat-value" id="statFills">--</span>
+  </div>
+  <div class="stat-item">
+    <span class="stat-label">P&amp;L</span>
+    <span class="stat-value" id="statPnl">--</span>
+  </div>
+  <div class="stat-item">
+    <span class="stat-label">Balance</span>
+    <span class="stat-value" id="statBalance">--</span>
+  </div>
+  <div class="stat-item">
+    <span class="stat-label">Uptime</span>
+    <span class="stat-value" id="statUptime">--</span>
+  </div>
+</div>
 
-  <!-- P&L Chart + Risk -->
-  <div class="grid-2">
-    <div class="section">
-      <div class="section-header">P&amp;L Over Time</div>
+<!-- Main Layout -->
+<div class="main-layout">
+
+  <!-- Main Content -->
+  <div class="main-content">
+
+    <!-- RFQ Volume Chart -->
+    <div class="chart-row">
+      <div class="chart-header">RFQ Volume (Last 24 Hours)</div>
       <div class="chart-container">
-        <canvas id="pnlChart"></canvas>
+        <canvas id="volumeChart"></canvas>
       </div>
     </div>
 
-    <div class="section">
-      <div class="section-header">
-        Risk Utilization
-        <span class="section-count" id="riskWarningCount"></span>
-      </div>
-      <div id="riskContent">
-        <div class="empty-state">Loading risk data...</div>
-      </div>
-    </div>
-  </div>
-
-  <!-- RFQs Table -->
-  <div class="grid-full">
-    <div class="section">
-      <div class="section-header">
-        Recent RFQs
-        <span class="section-count" id="rfqCount"></span>
+    <!-- RFQ Table -->
+    <div class="table-section">
+      <div class="table-header">
+        <div class="table-header-left">Recent RFQs <span id="rfqCount" style="color:var(--text-muted);font-weight:400;margin-left:6px"></span></div>
+        <div class="table-header-right">Showing up to 500 rows</div>
       </div>
       <div class="table-wrap">
         <table>
           <thead>
             <tr>
               <th>Time</th>
+              <th>Category</th>
               <th>Ticker</th>
               <th>Event</th>
               <th>Legs</th>
               <th>Contracts</th>
-              <th>Fair Value</th>
-              <th>Yes Bid</th>
-              <th>No Bid</th>
+              <th>Target Cost</th>
               <th>Status</th>
             </tr>
           </thead>
           <tbody id="rfqTableBody">
-            <tr><td colspan="9" class="empty-state">Loading...</td></tr>
+            <tr><td colspan="8" class="empty-state">Loading...</td></tr>
           </tbody>
         </table>
       </div>
     </div>
+
   </div>
 
-  <!-- Positions + Quotes -->
-  <div class="grid-2">
-    <div class="section">
-      <div class="section-header">
-        Open Positions
-        <span class="section-count" id="posCount"></span>
+  <!-- Sidebar -->
+  <div class="sidebar">
+    <div class="sidebar-section">
+      <div class="sidebar-title">RFQ Breakdown</div>
+      <div class="donut-wrap">
+        <canvas id="categoryChart"></canvas>
       </div>
-      <div class="table-wrap">
-        <table>
-          <thead>
-            <tr>
-              <th>Market</th>
-              <th>Event</th>
-              <th>Side</th>
-              <th>Contracts</th>
-              <th>Avg Entry</th>
-              <th>Exposure</th>
-            </tr>
-          </thead>
-          <tbody id="posTableBody">
-            <tr><td colspan="6" class="empty-state">Loading...</td></tr>
-          </tbody>
-        </table>
+      <div id="categoryList"></div>
+    </div>
+    <div class="sidebar-section">
+      <div class="sidebar-title">Stats</div>
+      <div class="sidebar-stat">
+        <span class="sidebar-stat-label">Avg Legs / RFQ</span>
+        <span class="sidebar-stat-value" id="avgLegs">--</span>
+      </div>
+      <div class="sidebar-stat">
+        <span class="sidebar-stat-label">Total RFQs Today</span>
+        <span class="sidebar-stat-value" id="totalRfqsSidebar">--</span>
       </div>
     </div>
-
-    <div class="section">
-      <div class="section-header">
-        Recent Quotes
-        <span class="section-count" id="quoteCount"></span>
-      </div>
-      <div class="table-wrap">
-        <table>
-          <thead>
-            <tr>
-              <th>Time</th>
-              <th>Ticker</th>
-              <th>Fair Value</th>
-              <th>Spread</th>
-              <th>Yes Bid</th>
-              <th>Status</th>
-            </tr>
-          </thead>
-          <tbody id="quoteTableBody">
-            <tr><td colspan="6" class="empty-state">Loading...</td></tr>
-          </tbody>
-        </table>
-      </div>
+    <div class="sidebar-section">
+      <div class="sidebar-title">Most Active Categories</div>
+      <div id="topCategories"></div>
     </div>
   </div>
 
 </div>
 
-<script>
-  let pnlChart = null;
+<!-- Footer -->
+<div class="footer">
+  KalshiMM v1.0 | <span id="footerMode">Paper Mode</span> | <span id="footerEnv">Connected to Demo</span>
+</div>
 
-  // Format helpers
+<!-- Legs Detail Tooltip (single shared element) -->
+<div class="legs-tooltip" id="legsTooltip"></div>
+
+<script>
+  let volumeChart = null;
+  let categoryChart = null;
+
+  // ── Format helpers ──
+
   function fmt$(v) {
     if (v == null) return '--';
     const n = Number(v);
-    return (n >= 0 ? '+' : '') + '$' + n.toFixed(2);
+    return (n >= 0 ? '+' : '') + '$' + Math.abs(n).toFixed(2);
   }
 
-  function fmtPct(v) {
-    if (v == null) return '--';
-    return (Number(v) * 100).toFixed(1) + '%';
+  function fmtTimeAgo(iso) {
+    if (!iso) return '--';
+    const now = Date.now();
+    const then = new Date(iso).getTime();
+    const diff = Math.max(0, now - then);
+    const sec = Math.floor(diff / 1000);
+    if (sec < 60) return sec + 's ago';
+    const min = Math.floor(sec / 60);
+    if (min < 60) return min + 'm ago';
+    const hr = Math.floor(min / 60);
+    if (hr < 24) return hr + 'h ago';
+    const days = Math.floor(hr / 24);
+    return days + 'd ago';
   }
 
   function fmtTime(iso) {
@@ -496,61 +618,92 @@
     return d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
   }
 
-  function fmtDate(iso) {
-    if (!iso) return '--';
-    return iso.slice(0, 10);
+  function fmtUptime(ms) {
+    const sec = Math.floor(ms / 1000);
+    const h = Math.floor(sec / 3600);
+    const m = Math.floor((sec % 3600) / 60);
+    if (h > 0) return h + 'h ' + m + 'm';
+    return m + 'm';
   }
 
   function pnlClass(v) {
     const n = Number(v);
     if (n > 0) return 'positive';
     if (n < 0) return 'negative';
-    return 'neutral';
+    return '';
   }
 
-  function statusClass(quoted) {
-    return quoted ? 'status-quoted' : 'status-skipped';
+  function parseCategory(ticker) {
+    if (!ticker) return 'Unknown';
+    const t = ticker.toUpperCase();
+    if (t.startsWith('KXMVE-') || t.includes('CROSS')) return 'Cross-Category';
+    if (t.startsWith('KX')) {
+      if (t.includes('NBA')) return 'NBA Multi-Game';
+      if (t.includes('NFL')) return 'NFL Multi-Game';
+      if (t.includes('MLB')) return 'MLB Multi-Game';
+      if (t.includes('NHL')) return 'NHL Multi-Game';
+      if (t.includes('SOCCER') || t.includes('MLS') || t.includes('EPL')) return 'Soccer Multi-Game';
+      if (t.includes('NCAAB') || t.includes('CBB')) return 'NCAAB Multi-Game';
+      if (t.includes('NCAAF') || t.includes('CFB')) return 'NCAAF Multi-Game';
+      return 'Multi-Game Combo';
+    }
+    if (t.includes('NBA')) return 'NBA Game';
+    if (t.includes('NFL')) return 'NFL Game';
+    if (t.includes('MLB')) return 'MLB Game';
+    if (t.includes('NHL')) return 'NHL Game';
+    if (t.includes('SOCCER') || t.includes('MLS') || t.includes('EPL')) return 'Soccer';
+    if (t.includes('NCAAB') || t.includes('CBB')) return 'NCAAB';
+    if (t.includes('NCAAF') || t.includes('CFB')) return 'NCAAF';
+    if (t.includes('PRES') || t.includes('ELECT') || t.includes('GOV')) return 'Politics';
+    if (t.includes('CPI') || t.includes('GDP') || t.includes('ECON') || t.includes('FED')) return 'Economics';
+    if (t.includes('WEATHER') || t.includes('TEMP')) return 'Weather';
+    if (t.includes('CRYPTO') || t.includes('BTC') || t.includes('ETH')) return 'Crypto';
+    return 'Other';
   }
 
-  function quoteStatusClass(status) {
-    const map = {
-      'open': 'status-open',
-      'executed': 'status-executed',
-      'cancelled': 'status-cancelled',
-      'accepted': 'status-accepted',
-      'confirmed': 'status-accepted',
-    };
-    return map[status] || 'status-open';
+  function parseLegsSummary(legsJson) {
+    if (!legsJson) return null;
+    try {
+      const legs = JSON.parse(legsJson);
+      if (!Array.isArray(legs)) return null;
+      return legs.map((leg, i) => {
+        const ticker = leg.market_ticker || leg.ticker || leg.marketTicker || '?';
+        const side = leg.side || leg.direction || '?';
+        return 'L' + (i + 1) + ': ' + ticker + ' (' + side + ')';
+      });
+    } catch { return null; }
   }
 
-  function riskBarClass(util) {
-    if (util > 0.8) return 'risk-high';
-    if (util > 0.5) return 'risk-medium';
-    return 'risk-low';
-  }
+  const CATEGORY_COLORS = [
+    '#4c7cf5', '#22c55e', '#eab308', '#ef4444', '#a78bfa',
+    '#06b6d4', '#f97316', '#ec4899', '#64748b', '#84cc16',
+    '#14b8a6', '#f43f5e'
+  ];
 
-  // Fetch helpers
+  // ── Fetch helper ──
   async function fetchJSON(url) {
     const res = await fetch(url);
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    if (!res.ok) throw new Error('HTTP ' + res.status);
     return res.json();
   }
 
-  // Update stats cards
+  // ── Update stats bar ──
   async function updateStats() {
     try {
       const data = await fetchJSON('/api/stats');
 
-      document.getElementById('statRfqs').textContent = data.rfqs_seen;
-      document.getElementById('statQuotes').textContent = data.quotes_submitted;
-      document.getElementById('statFills').textContent = data.quotes_filled;
+      document.getElementById('statRfqs').textContent = data.rfqs_seen.toLocaleString();
+      document.getElementById('statQuotes').textContent = data.quotes_submitted.toLocaleString();
+      document.getElementById('statFills').textContent = data.quotes_filled.toLocaleString();
 
       const pnlEl = document.getElementById('statPnl');
       pnlEl.textContent = fmt$(data.today_pnl);
-      pnlEl.className = 'card-value ' + pnlClass(data.today_pnl);
+      pnlEl.className = 'stat-value ' + pnlClass(data.today_pnl);
 
       document.getElementById('statBalance').textContent =
         '$' + Number(data.balance).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+      document.getElementById('statUptime').textContent = fmtUptime(data.uptime_ms);
 
       // Badges
       const modeBadge = document.getElementById('modeBadge');
@@ -564,305 +717,250 @@
 
       const envBadge = document.getElementById('envBadge');
       envBadge.textContent = data.env.toUpperCase();
-      envBadge.className = 'badge badge-' + (data.env === 'production' ? 'live' : 'demo');
+      envBadge.className = 'badge badge-' + (data.env === 'production' ? 'production' : 'demo');
 
-      const killBadge = document.getElementById('killBadge');
-      killBadge.style.display = data.kill_switch ? 'inline' : 'none';
+      document.getElementById('killBadge').style.display = data.kill_switch ? 'inline' : 'none';
+
+      // Footer
+      document.getElementById('footerMode').textContent = data.paper_mode ? 'Paper Mode' : 'Live Mode';
+      document.getElementById('footerEnv').textContent = 'Connected to ' + (data.env === 'production' ? 'Production' : 'Demo');
     } catch (err) {
       console.error('Failed to fetch stats:', err);
     }
   }
 
-  // Update RFQs table
+  // ── Update RFQ table ──
   async function updateRFQs() {
     try {
       const rfqs = await fetchJSON('/api/rfqs');
       const tbody = document.getElementById('rfqTableBody');
-      document.getElementById('rfqCount').textContent = rfqs.length + ' rows';
+      document.getElementById('rfqCount').textContent = '(' + rfqs.length + ')';
 
       if (rfqs.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="9" class="empty-state">No RFQs yet</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="8" class="empty-state">No RFQs captured yet</td></tr>';
         return;
       }
 
-      tbody.innerHTML = rfqs.map(r => `
-        <tr>
-          <td class="mono">${fmtTime(r.received_at)}</td>
-          <td class="mono">${r.market_ticker || '--'}</td>
-          <td class="mono" style="color:var(--text-secondary)">${r.event_ticker || '--'}</td>
-          <td>${r.num_legs || '--'}</td>
-          <td>${r.contracts_requested || '--'}</td>
-          <td class="mono">${r.computed_fair_value != null ? r.computed_fair_value.toFixed(4) : '--'}</td>
-          <td class="mono">${r.quote_price_yes || '--'}</td>
-          <td class="mono">${r.quote_price_no || '--'}</td>
-          <td><span class="status ${statusClass(r.quoted)}">${r.quoted ? 'Quoted' : 'Skipped'}</span></td>
-        </tr>
-      `).join('');
+      tbody.innerHTML = rfqs.map(r => {
+        const cat = parseCategory(r.market_ticker);
+        const isHighLegs = (r.num_legs || 0) > 5;
+        const contracts = r.contracts_requested ? Number(r.contracts_requested) : 0;
+        const targetCost = r.target_cost_dollars ? '$' + Number(r.target_cost_dollars).toFixed(2) : '--';
+        const legsInfo = parseLegsSummary(r.legs_json);
+        const legsHtml = legsInfo
+          ? '<span class="legs-badge">' + (r.num_legs || '?') +
+            ' <span class="legs-detail-btn" data-legs=\'' + escapeAttr(JSON.stringify(legsInfo)) + '\'>i</span></span>'
+          : (r.num_legs || '--');
+
+        return '<tr class="' + (isHighLegs ? 'high-legs' : '') + '">' +
+          '<td class="mono" title="' + fmtTime(r.received_at) + '">' + fmtTimeAgo(r.received_at) + '</td>' +
+          '<td class="text-secondary" style="font-size:11px">' + cat + '</td>' +
+          '<td class="mono">' + (r.market_ticker || '--') + '</td>' +
+          '<td class="mono text-muted" style="max-width:140px;overflow:hidden;text-overflow:ellipsis">' + (r.event_ticker || '--') + '</td>' +
+          '<td class="legs-cell">' + legsHtml + '</td>' +
+          '<td class="mono">' + contracts + '</td>' +
+          '<td class="mono">' + targetCost + '</td>' +
+          '<td><span class="status ' + (r.quoted ? 'status-quoted' : 'status-skipped') + '">' + (r.quoted ? 'Quoted' : 'Observed') + '</span></td>' +
+          '</tr>';
+      }).join('');
     } catch (err) {
       console.error('Failed to fetch RFQs:', err);
     }
   }
 
-  // Update quotes table
-  async function updateQuotes() {
-    try {
-      const quotes = await fetchJSON('/api/quotes');
-      const tbody = document.getElementById('quoteTableBody');
-      document.getElementById('quoteCount').textContent = quotes.length + ' rows';
-
-      if (quotes.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="6" class="empty-state">No quotes yet</td></tr>';
-        return;
-      }
-
-      tbody.innerHTML = quotes.map(q => `
-        <tr>
-          <td class="mono">${fmtTime(q.submitted_at)}</td>
-          <td class="mono">${q.market_ticker || '--'}</td>
-          <td class="mono">${q.fair_value_computed != null ? q.fair_value_computed.toFixed(4) : '--'}</td>
-          <td class="mono">${q.spread_applied != null ? (q.spread_applied * 100).toFixed(1) + '%' : '--'}</td>
-          <td class="mono">${q.yes_bid_dollars || '--'}</td>
-          <td><span class="status ${quoteStatusClass(q.status)}">${q.status}</span></td>
-        </tr>
-      `).join('');
-    } catch (err) {
-      console.error('Failed to fetch quotes:', err);
-    }
+  function escapeAttr(str) {
+    return str.replace(/&/g, '&amp;').replace(/'/g, '&#39;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
   }
 
-  // Update positions table
-  async function updatePositions() {
-    try {
-      const data = await fetchJSON('/api/positions');
-      const tbody = document.getElementById('posTableBody');
-      document.getElementById('posCount').textContent =
-        data.total_positions + ' positions / $' + data.total_exposure.toFixed(2) + ' exposure';
-
-      if (data.positions.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="6" class="empty-state">No open positions</td></tr>';
-        return;
-      }
-
-      tbody.innerHTML = data.positions.map(p => `
-        <tr>
-          <td class="mono">${p.market_ticker}</td>
-          <td class="mono" style="color:var(--text-secondary)">${p.event_ticker}</td>
-          <td><span class="status ${p.side === 'yes' ? 'status-quoted' : 'status-accepted'}">${p.side.toUpperCase()}</span></td>
-          <td>${p.contracts}</td>
-          <td class="mono">${p.avg_entry_price.toFixed(4)}</td>
-          <td class="mono ${pnlClass(-p.exposure)}">${fmt$(p.exposure)}</td>
-        </tr>
-      `).join('');
-    } catch (err) {
-      console.error('Failed to fetch positions:', err);
+  // ── Legs tooltip ──
+  document.addEventListener('mouseover', function(e) {
+    const btn = e.target.closest('.legs-detail-btn');
+    const tooltip = document.getElementById('legsTooltip');
+    if (!btn) {
+      tooltip.classList.remove('visible');
+      return;
     }
-  }
-
-  // Update risk section
-  async function updateRisk() {
     try {
-      const data = await fetchJSON('/api/risk');
-      const container = document.getElementById('riskContent');
-      const warningCount = document.getElementById('riskWarningCount');
+      const legs = JSON.parse(btn.dataset.legs);
+      tooltip.innerHTML =
+        '<div class="legs-tooltip-title">Legs Detail</div>' +
+        legs.map(l => '<div class="leg-item">' + l + '</div>').join('');
+      const rect = btn.getBoundingClientRect();
+      tooltip.style.left = Math.min(rect.left, window.innerWidth - 440) + 'px';
+      tooltip.style.top = (rect.bottom + 6) + 'px';
+      tooltip.classList.add('visible');
+    } catch {}
+  });
 
-      if (data.warnings.length > 0) {
-        warningCount.textContent = data.warnings.length + ' warning(s)';
-        warningCount.style.color = 'var(--accent-red)';
+  document.addEventListener('mouseout', function(e) {
+    if (e.target.closest('.legs-detail-btn')) {
+      document.getElementById('legsTooltip').classList.remove('visible');
+    }
+  });
+
+  // ── RFQ Volume Chart ──
+  async function updateVolumeChart() {
+    try {
+      const data = await fetchJSON('/api/rfq-volume');
+      const labels = data.map(d => d.label);
+      const counts = data.map(d => d.count);
+
+      const ctx = document.getElementById('volumeChart').getContext('2d');
+
+      if (volumeChart) {
+        volumeChart.data.labels = labels;
+        volumeChart.data.datasets[0].data = counts;
+        volumeChart.update('none');
       } else {
-        warningCount.textContent = 'All clear';
-        warningCount.style.color = 'var(--accent-green)';
-      }
-
-      let html = '';
-
-      // Total exposure bar
-      html += `
-        <div class="risk-item">
-          <div class="risk-label">
-            <span>Total Exposure</span>
-            <span>$${data.total_exposure.toFixed(2)} / $${data.max_total_exposure.toFixed(2)}</span>
-          </div>
-          <div class="risk-bar">
-            <div class="risk-bar-fill ${riskBarClass(data.total_utilization)}"
-                 style="width: ${Math.min(data.total_utilization * 100, 100)}%"></div>
-          </div>
-        </div>
-      `;
-
-      // Daily loss bar
-      html += `
-        <div class="risk-item">
-          <div class="risk-label">
-            <span>Daily Loss Used</span>
-            <span>$${Math.abs(Math.min(0, data.today_pnl)).toFixed(2)} / $${data.max_daily_loss.toFixed(2)}</span>
-          </div>
-          <div class="risk-bar">
-            <div class="risk-bar-fill ${riskBarClass(data.daily_loss_utilization)}"
-                 style="width: ${Math.min(data.daily_loss_utilization * 100, 100)}%"></div>
-          </div>
-        </div>
-      `;
-
-      // Per-event exposure bars
-      if (data.exposure_by_event.length > 0) {
-        data.exposure_by_event.forEach(ev => {
-          html += `
-            <div class="risk-item">
-              <div class="risk-label">
-                <span style="font-family:monospace;font-size:12px">${ev.event_ticker}</span>
-                <span>$${ev.exposure.toFixed(2)} / $${ev.limit.toFixed(2)}</span>
-              </div>
-              <div class="risk-bar">
-                <div class="risk-bar-fill ${riskBarClass(ev.utilization)}"
-                     style="width: ${Math.min(ev.utilization * 100, 100)}%"></div>
-              </div>
-            </div>
-          `;
-        });
-      }
-
-      // Warnings
-      if (data.warnings.length > 0) {
-        html += '<div class="warnings">';
-        data.warnings.forEach(w => {
-          html += `<div class="warning-item">Warning: ${w}</div>`;
-        });
-        html += '</div>';
-      }
-
-      container.innerHTML = html;
-    } catch (err) {
-      console.error('Failed to fetch risk:', err);
-    }
-  }
-
-  // Update P&L chart
-  async function updatePnLChart() {
-    try {
-      const data = await fetchJSON('/api/pnl');
-
-      if (data.length === 0) {
-        return;
-      }
-
-      // Sort by date ascending
-      data.sort((a, b) => a.date.localeCompare(b.date));
-
-      const labels = data.map(d => d.date);
-      const values = data.map(d => d.net_pnl);
-
-      // Compute cumulative P&L
-      const cumulative = [];
-      let running = 0;
-      for (const v of values) {
-        running += Number(v);
-        cumulative.push(running);
-      }
-
-      const ctx = document.getElementById('pnlChart').getContext('2d');
-
-      if (pnlChart) {
-        pnlChart.data.labels = labels;
-        pnlChart.data.datasets[0].data = values;
-        pnlChart.data.datasets[1].data = cumulative;
-        pnlChart.update('none');
-      } else {
-        pnlChart = new Chart(ctx, {
-          type: 'line',
+        volumeChart = new Chart(ctx, {
+          type: 'bar',
           data: {
             labels,
-            datasets: [
-              {
-                label: 'Daily P&L',
-                data: values,
-                borderColor: '#4c7cf5',
-                backgroundColor: 'rgba(76, 124, 245, 0.1)',
-                fill: true,
-                tension: 0.3,
-                pointRadius: 3,
-                pointHoverRadius: 5,
-                borderWidth: 2,
-              },
-              {
-                label: 'Cumulative P&L',
-                data: cumulative,
-                borderColor: '#a78bfa',
-                backgroundColor: 'transparent',
-                borderDash: [5, 3],
-                tension: 0.3,
-                pointRadius: 2,
-                pointHoverRadius: 4,
-                borderWidth: 2,
-              }
-            ]
+            datasets: [{
+              data: counts,
+              backgroundColor: counts.map(c => c > 0 ? 'rgba(76, 124, 245, 0.6)' : 'rgba(76, 124, 245, 0.15)'),
+              borderColor: 'rgba(76, 124, 245, 0.8)',
+              borderWidth: 1,
+              borderRadius: 2,
+              barPercentage: 0.85,
+              categoryPercentage: 0.9,
+            }]
           },
           options: {
             responsive: true,
             maintainAspectRatio: false,
-            interaction: {
-              mode: 'index',
-              intersect: false,
-            },
             plugins: {
-              legend: {
-                labels: {
-                  color: '#8b8fa3',
-                  font: { size: 11 },
-                  usePointStyle: true,
-                  pointStyle: 'circle',
-                }
-              },
+              legend: { display: false },
               tooltip: {
-                backgroundColor: '#1e2235',
-                borderColor: '#2d3154',
+                backgroundColor: '#161923',
+                borderColor: '#252838',
                 borderWidth: 1,
-                titleColor: '#e4e6f0',
-                bodyColor: '#8b8fa3',
-                padding: 10,
+                titleColor: '#e2e4ec',
+                bodyColor: '#7c8198',
+                padding: 8,
+                cornerRadius: 4,
+                titleFont: { family: 'Inter', size: 11 },
+                bodyFont: { family: 'JetBrains Mono', size: 11 },
                 callbacks: {
-                  label: function(ctx) {
-                    return ctx.dataset.label + ': ' + fmt$(ctx.raw);
-                  }
+                  label: function(ctx) { return ctx.raw + ' RFQs'; }
                 }
               }
             },
             scales: {
               x: {
-                grid: { color: 'rgba(45, 49, 84, 0.5)' },
-                ticks: { color: '#5c6078', font: { size: 10 }, maxTicksLimit: 15 },
+                grid: { display: false },
+                ticks: { color: '#4e5268', font: { family: 'JetBrains Mono', size: 9 }, maxRotation: 0, maxTicksLimit: 12 },
+                border: { color: '#252838' }
               },
               y: {
-                grid: { color: 'rgba(45, 49, 84, 0.5)' },
-                ticks: {
-                  color: '#5c6078',
-                  font: { size: 10 },
-                  callback: function(val) { return '$' + val; }
-                },
+                grid: { color: 'rgba(37, 40, 56, 0.5)' },
+                ticks: { color: '#4e5268', font: { family: 'JetBrains Mono', size: 9 }, maxTicksLimit: 5 },
+                border: { display: false },
+                beginAtZero: true
               }
             }
           }
         });
       }
     } catch (err) {
-      console.error('Failed to fetch P&L:', err);
+      console.error('Failed to fetch RFQ volume:', err);
     }
   }
 
-  // Refresh all data
+  // ── Category Sidebar ──
+  async function updateCategories() {
+    try {
+      const data = await fetchJSON('/api/rfq-categories');
+
+      document.getElementById('avgLegs').textContent = data.avg_legs.toFixed(1);
+      document.getElementById('totalRfqsSidebar').textContent = data.total_rfqs.toLocaleString();
+
+      const cats = data.categories;
+      const entries = Object.entries(cats).sort((a, b) => b[1] - a[1]);
+      const maxCount = entries.length > 0 ? entries[0][1] : 1;
+
+      // Donut chart
+      const labels = entries.map(e => e[0]);
+      const values = entries.map(e => e[1]);
+      const colors = entries.map((_, i) => CATEGORY_COLORS[i % CATEGORY_COLORS.length]);
+
+      const ctx = document.getElementById('categoryChart').getContext('2d');
+      if (categoryChart) {
+        categoryChart.data.labels = labels;
+        categoryChart.data.datasets[0].data = values;
+        categoryChart.data.datasets[0].backgroundColor = colors;
+        categoryChart.update('none');
+      } else {
+        categoryChart = new Chart(ctx, {
+          type: 'doughnut',
+          data: {
+            labels,
+            datasets: [{
+              data: values,
+              backgroundColor: colors,
+              borderColor: '#161923',
+              borderWidth: 2,
+            }]
+          },
+          options: {
+            responsive: true,
+            maintainAspectRatio: true,
+            cutout: '65%',
+            plugins: {
+              legend: { display: false },
+              tooltip: {
+                backgroundColor: '#161923',
+                borderColor: '#252838',
+                borderWidth: 1,
+                titleColor: '#e2e4ec',
+                bodyColor: '#7c8198',
+                padding: 8,
+                titleFont: { family: 'Inter', size: 11 },
+                bodyFont: { family: 'Inter', size: 11 },
+              }
+            }
+          }
+        });
+      }
+
+      // Category list
+      const listHtml = entries.slice(0, 8).map((e, i) => {
+        const pct = maxCount > 0 ? (e[1] / maxCount * 100) : 0;
+        return '<div class="category-row">' +
+          '<span class="category-name">' + e[0] + '</span>' +
+          '<span class="category-count">' + e[1] + '</span>' +
+          '</div>' +
+          '<div class="category-bar-wrap"><div class="category-bar" style="width:' + pct + '%;background:' + CATEGORY_COLORS[i % CATEGORY_COLORS.length] + '"></div></div>';
+      }).join('');
+
+      document.getElementById('categoryList').innerHTML = listHtml;
+
+      // Top categories
+      const topHtml = entries.slice(0, 5).map((e, i) =>
+        '<div class="category-row">' +
+        '<span class="category-name">' + (i + 1) + '. ' + e[0] + '</span>' +
+        '<span class="category-count">' + e[1] + '</span>' +
+        '</div>'
+      ).join('');
+      document.getElementById('topCategories').innerHTML = topHtml || '<div style="color:var(--text-muted);font-size:11px">No data yet</div>';
+    } catch (err) {
+      console.error('Failed to fetch categories:', err);
+    }
+  }
+
+  // ── Refresh All ──
   async function refreshAll() {
     await Promise.all([
       updateStats(),
       updateRFQs(),
-      updateQuotes(),
-      updatePositions(),
-      updateRisk(),
-      updatePnLChart(),
+      updateVolumeChart(),
+      updateCategories(),
     ]);
     document.getElementById('lastUpdate').textContent =
       'Updated ' + new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
   }
 
-  // Initial load + auto-refresh
+  // Initial load + 30s auto-refresh
   refreshAll();
   setInterval(refreshAll, 30000);
 </script>
