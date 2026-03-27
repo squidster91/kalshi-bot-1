@@ -28,7 +28,7 @@ class KalshiMMBot {
   constructor() {
     this.orderbookManager = new OrderbookManager();
     this.commsManager = new CommunicationsManager();
-    this.rfqListener = new RFQListener(this.commsManager);
+    this.rfqListener = new RFQListener(this.commsManager, this.orderbookManager);
     this.quoter = new Quoter(this.orderbookManager);
     this.confirmer = new Confirmer();
   }

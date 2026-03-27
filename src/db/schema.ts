@@ -112,12 +112,39 @@ function initSchema(db: Database.Database): void {
       timestamp TEXT NOT NULL
     );
 
+    -- RFQ outcome tracking: leg prices at RFQ time
+    CREATE TABLE IF NOT EXISTS rfq_leg_prices (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      rfq_id TEXT NOT NULL,
+      leg_ticker TEXT NOT NULL,
+      leg_side TEXT NOT NULL,
+      mid_price_at_rfq REAL,
+      latest_mid_price REAL,
+      latest_price_at TEXT,
+      settled INTEGER DEFAULT 0,
+      settlement_result TEXT,
+      FOREIGN KEY (rfq_id) REFERENCES rfqs_seen(id)
+    );
+
     CREATE INDEX IF NOT EXISTS idx_rfqs_received_at ON rfqs_seen(received_at);
     CREATE INDEX IF NOT EXISTS idx_quotes_status ON quotes_submitted(status);
     CREATE INDEX IF NOT EXISTS idx_pnl_timestamp ON pnl_log(timestamp);
     CREATE INDEX IF NOT EXISTS idx_positions_event ON positions(event_ticker);
     CREATE INDEX IF NOT EXISTS idx_price_snapshots_ticker_ts ON price_snapshots(ticker, timestamp);
+    CREATE INDEX IF NOT EXISTS idx_rfq_leg_prices_rfq ON rfq_leg_prices(rfq_id);
+    CREATE INDEX IF NOT EXISTS idx_rfq_leg_prices_ticker ON rfq_leg_prices(leg_ticker);
   `);
+
+  // Add columns to rfqs_seen if they don't exist (safe migration)
+  try {
+    db.exec(`ALTER TABLE rfqs_seen ADD COLUMN deleted_at TEXT`);
+  } catch { /* column already exists */ }
+  try {
+    db.exec(`ALTER TABLE rfqs_seen ADD COLUMN lifespan_ms INTEGER`);
+  } catch { /* column already exists */ }
+  try {
+    db.exec(`ALTER TABLE rfqs_seen ADD COLUMN leg_prices_snapshot TEXT`);
+  } catch { /* column already exists */ }
 }
 
 export function closeDb(): void {

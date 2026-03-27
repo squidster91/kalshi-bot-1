@@ -297,6 +297,131 @@ export function getSnapshotTickers(since: string): string[] {
   return rows.map((r) => r.ticker);
 }
 
+// ── RFQ Outcomes ──
+
+export function insertRFQLegPrices(
+  rfqId: string,
+  legs: Array<{ ticker: string; side: string; midPrice: number | null }>
+): void {
+  const db = getDb();
+  const stmt = db.prepare(`
+    INSERT OR IGNORE INTO rfq_leg_prices (rfq_id, leg_ticker, leg_side, mid_price_at_rfq)
+    VALUES (?, ?, ?, ?)
+  `);
+  for (const leg of legs) {
+    stmt.run(rfqId, leg.ticker, leg.side, leg.midPrice);
+  }
+}
+
+export function updateRFQLegLatestPrice(legTicker: string, midPrice: number): void {
+  const db = getDb();
+  db.prepare(`
+    UPDATE rfq_leg_prices SET latest_mid_price = ?, latest_price_at = ?
+    WHERE leg_ticker = ? AND settled = 0
+  `).run(midPrice, new Date().toISOString(), legTicker);
+}
+
+export function markRFQDeleted(rfqId: string): void {
+  const db = getDb();
+  const now = new Date().toISOString();
+  db.prepare(`
+    UPDATE rfqs_seen SET deleted_at = ? WHERE id = ? AND deleted_at IS NULL
+  `).run(now, rfqId);
+
+  // Calculate lifespan
+  const row = db.prepare(`
+    SELECT received_at FROM rfqs_seen WHERE id = ?
+  `).get(rfqId) as { received_at: string } | undefined;
+
+  if (row) {
+    const lifespan = new Date(now).getTime() - new Date(row.received_at).getTime();
+    db.prepare(`UPDATE rfqs_seen SET lifespan_ms = ? WHERE id = ?`).run(lifespan, rfqId);
+  }
+}
+
+export function saveRFQLegPricesSnapshot(rfqId: string, snapshot: Record<string, number>): void {
+  const db = getDb();
+  db.prepare(`UPDATE rfqs_seen SET leg_prices_snapshot = ? WHERE id = ?`)
+    .run(JSON.stringify(snapshot), rfqId);
+}
+
+export function getRFQsWithOutcomes(limit = 200): Array<Record<string, unknown>> {
+  const db = getDb();
+  return db.prepare(`
+    SELECT
+      r.id, r.market_ticker, r.event_ticker, r.legs_json,
+      r.contracts_requested, r.target_cost_dollars,
+      r.received_at, r.deleted_at, r.lifespan_ms,
+      r.num_legs, r.is_same_game, r.quoted,
+      r.leg_prices_snapshot,
+      r.computed_fair_value
+    FROM rfqs_seen r
+    ORDER BY r.received_at DESC
+    LIMIT ?
+  `).all(limit) as Array<Record<string, unknown>>;
+}
+
+export function getRFQLegPrices(rfqId: string): Array<{
+  leg_ticker: string;
+  leg_side: string;
+  mid_price_at_rfq: number | null;
+  latest_mid_price: number | null;
+  settled: number;
+  settlement_result: string | null;
+}> {
+  const db = getDb();
+  return db.prepare(`
+    SELECT leg_ticker, leg_side, mid_price_at_rfq, latest_mid_price, settled, settlement_result
+    FROM rfq_leg_prices WHERE rfq_id = ?
+  `).all(rfqId) as Array<{
+    leg_ticker: string;
+    leg_side: string;
+    mid_price_at_rfq: number | null;
+    latest_mid_price: number | null;
+    settled: number;
+    settlement_result: string | null;
+  }>;
+}
+
+export function getRFQOutcomeStats(): {
+  total_rfqs: number;
+  avg_lifespan_ms: number;
+  rfqs_with_prices: number;
+  avg_legs: number;
+  rfqs_by_hour: Array<{ hour: number; count: number }>;
+} {
+  const db = getDb();
+
+  const total = db.prepare(`SELECT COUNT(*) as c FROM rfqs_seen`).get() as { c: number };
+
+  const lifespan = db.prepare(`
+    SELECT AVG(lifespan_ms) as avg_ms FROM rfqs_seen WHERE lifespan_ms IS NOT NULL
+  `).get() as { avg_ms: number | null };
+
+  const withPrices = db.prepare(`
+    SELECT COUNT(DISTINCT rfq_id) as c FROM rfq_leg_prices WHERE mid_price_at_rfq IS NOT NULL
+  `).get() as { c: number };
+
+  const avgLegs = db.prepare(`
+    SELECT AVG(num_legs) as avg FROM rfqs_seen WHERE num_legs > 0
+  `).get() as { avg: number | null };
+
+  const byHour = db.prepare(`
+    SELECT CAST(strftime('%H', received_at) AS INTEGER) as hour, COUNT(*) as count
+    FROM rfqs_seen
+    GROUP BY strftime('%H', received_at)
+    ORDER BY hour
+  `).all() as Array<{ hour: number; count: number }>;
+
+  return {
+    total_rfqs: total.c,
+    avg_lifespan_ms: lifespan.avg_ms ?? 0,
+    rfqs_with_prices: withPrices.c,
+    avg_legs: avgLegs.avg ?? 0,
+    rfqs_by_hour: byHour,
+  };
+}
+
 // ── Daily Summary ──
 
 export function getTodayStats(): {

@@ -1,7 +1,8 @@
 import { EventEmitter } from 'events';
 import { CommunicationsManager } from '../api/websocket';
+import { OrderbookManager } from '../api/websocket';
 import { MVELeg } from '../api/rest';
-import { insertRFQ } from '../db/queries';
+import { insertRFQ, insertRFQLegPrices, saveRFQLegPricesSnapshot, markRFQDeleted } from '../db/queries';
 import { logger } from '../logger';
 
 export interface ParsedRFQ {
@@ -22,11 +23,13 @@ export interface ParsedRFQ {
  */
 export class RFQListener extends EventEmitter {
   private comms: CommunicationsManager;
+  private orderbook: OrderbookManager | null = null;
   private rfqCount = 0;
 
-  constructor(comms: CommunicationsManager) {
+  constructor(comms: CommunicationsManager, orderbook?: OrderbookManager) {
     super();
     this.comms = comms;
+    this.orderbook = orderbook ?? null;
   }
 
   start(): void {
@@ -36,6 +39,13 @@ export class RFQListener extends EventEmitter {
 
     this.comms.on('rfq_deleted', (msg: Record<string, unknown>) => {
       const id = msg.id as string;
+      if (id) {
+        try {
+          markRFQDeleted(id);
+        } catch (err) {
+          logger.debug('Failed to mark RFQ deleted', { id, error: String(err) });
+        }
+      }
       logger.debug('RFQ deleted', { id });
       this.emit('rfq_deleted', id);
     });
@@ -59,6 +69,33 @@ export class RFQListener extends EventEmitter {
         contracts_requested: parsed.contractsRequested.toString(),
         target_cost_dollars: parsed.targetCostDollars.toString(),
       });
+
+      // Capture leg prices from orderbook at RFQ time
+      if (this.orderbook) {
+        try {
+          const legPrices: Array<{ ticker: string; side: string; midPrice: number | null }> = [];
+          const priceSnapshot: Record<string, number> = {};
+
+          for (const leg of parsed.legs) {
+            const mid = this.orderbook.getMidPrice(leg.market_ticker);
+            legPrices.push({
+              ticker: leg.market_ticker,
+              side: leg.side,
+              midPrice: mid,
+            });
+            if (mid !== null) {
+              priceSnapshot[leg.market_ticker] = mid;
+            }
+          }
+
+          insertRFQLegPrices(parsed.id, legPrices);
+          if (Object.keys(priceSnapshot).length > 0) {
+            saveRFQLegPricesSnapshot(parsed.id, priceSnapshot);
+          }
+        } catch (err) {
+          logger.debug('Failed to capture leg prices for RFQ', { id: parsed.id, error: String(err) });
+        }
+      }
 
       logger.info('RFQ received', {
         id: parsed.id,

@@ -4,7 +4,7 @@ import { getDb } from '../db/schema';
 import { config } from '../config';
 import { getPositionSummary } from '../risk/positions';
 import { getRiskUtilization, isKillSwitchActive } from '../risk/limits';
-import { getTodayPnL, getTodayStats } from '../db/queries';
+import { getTodayPnL, getTodayStats, getRFQsWithOutcomes, getRFQLegPrices, getRFQOutcomeStats } from '../db/queries';
 import { logger } from '../logger';
 
 const app = express();
@@ -320,6 +320,115 @@ function parseCategory(ticker: string): string {
 
   return 'Other';
 }
+
+// ── Outcomes page ──
+app.get('/outcomes', (_req, res) => {
+  const htmlPath = path.join(__dirname, '..', '..', 'src', 'dashboard', 'outcomes.html');
+  res.sendFile(htmlPath);
+});
+
+// ── API: RFQ outcomes for backtesting ──
+app.get('/api/outcomes', (_req, res) => {
+  try {
+    const rfqs = getRFQsWithOutcomes(500);
+    res.json(rfqs);
+  } catch (err) {
+    logger.error('Dashboard /api/outcomes error', { error: String(err) });
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// ── API: Leg prices for a specific RFQ ──
+app.get('/api/outcomes/:rfqId/legs', (req, res) => {
+  try {
+    const legs = getRFQLegPrices(req.params.rfqId);
+    res.json(legs);
+  } catch (err) {
+    logger.error('Dashboard /api/outcomes/:rfqId/legs error', { error: String(err) });
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// ── API: Outcome statistics ──
+app.get('/api/outcome-stats', (_req, res) => {
+  try {
+    const stats = getRFQOutcomeStats();
+    res.json(stats);
+  } catch (err) {
+    logger.error('Dashboard /api/outcome-stats error', { error: String(err) });
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// ── API: Simulated P&L - what if we'd filled at target cost? ──
+app.get('/api/backtest', (_req, res) => {
+  try {
+    const db = getDb();
+
+    // Get all RFQs with leg price data
+    const rfqs = db.prepare(`
+      SELECT r.id, r.target_cost_dollars, r.contracts_requested,
+             r.num_legs, r.received_at, r.lifespan_ms, r.leg_prices_snapshot,
+             r.market_ticker
+      FROM rfqs_seen r
+      WHERE r.leg_prices_snapshot IS NOT NULL
+      ORDER BY r.received_at DESC
+      LIMIT 1000
+    `).all() as Array<Record<string, unknown>>;
+
+    let totalSimulatedPnl = 0;
+    let rfqsAnalyzed = 0;
+    let rfqsProfitable = 0;
+    const dailyPnl: Record<string, number> = {};
+
+    for (const rfq of rfqs) {
+      const snapshot = rfq.leg_prices_snapshot as string;
+      if (!snapshot) continue;
+
+      let prices: Record<string, number>;
+      try { prices = JSON.parse(snapshot); } catch { continue; }
+
+      const targetCost = parseFloat(rfq.target_cost_dollars as string) || 0;
+      if (targetCost <= 0) continue;
+
+      // Compute naive fair value as product of leg probabilities
+      const legPriceValues = Object.values(prices);
+      if (legPriceValues.length === 0) continue;
+
+      let fairValue = 1;
+      for (const p of legPriceValues) {
+        fairValue *= p;
+      }
+
+      // Simulated edge: what the RFQ buyer was willing to pay vs fair value
+      // If target_cost > fair_value, they're overpaying → we'd profit
+      const edge = targetCost - fairValue;
+
+      totalSimulatedPnl += edge;
+      rfqsAnalyzed++;
+      if (edge > 0) rfqsProfitable++;
+
+      const date = (rfq.received_at as string).slice(0, 10);
+      dailyPnl[date] = (dailyPnl[date] || 0) + edge;
+    }
+
+    const dailyEntries = Object.entries(dailyPnl)
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([date, pnl]) => ({ date, pnl: Math.round(pnl * 100) / 100 }));
+
+    res.json({
+      rfqs_analyzed: rfqsAnalyzed,
+      rfqs_profitable: rfqsProfitable,
+      win_rate: rfqsAnalyzed > 0 ? rfqsProfitable / rfqsAnalyzed : 0,
+      total_simulated_pnl: Math.round(totalSimulatedPnl * 100) / 100,
+      avg_edge_per_rfq: rfqsAnalyzed > 0 ? Math.round((totalSimulatedPnl / rfqsAnalyzed) * 10000) / 10000 : 0,
+      daily_pnl: dailyEntries,
+    });
+  } catch (err) {
+    logger.error('Dashboard /api/backtest error', { error: String(err) });
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
 
 export function startDashboard(): void {
   app.listen(PORT, () => {

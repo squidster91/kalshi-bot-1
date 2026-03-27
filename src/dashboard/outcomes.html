@@ -1,0 +1,755 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>KalshiMM - RFQ Outcomes & Backtesting</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<style>
+  :root {
+    --bg-primary: #0a0c10;
+    --bg-secondary: #111318;
+    --bg-card: #161921;
+    --bg-hover: #1c2030;
+    --bg-row-alt: #12141a;
+    --border: #1e2230;
+    --border-bright: #2a3050;
+    --text-primary: #e8eaf0;
+    --text-secondary: #7c8190;
+    --text-muted: #4a4f62;
+    --accent-blue: #3b82f6;
+    --accent-green: #22c55e;
+    --accent-red: #ef4444;
+    --accent-yellow: #eab308;
+    --accent-purple: #a855f7;
+    --accent-orange: #f97316;
+    --accent-cyan: #06b6d4;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    font-family: 'Inter', -apple-system, sans-serif;
+    background: var(--bg-primary);
+    color: var(--text-primary);
+    line-height: 1.4;
+    min-height: 100vh;
+  }
+
+  .header {
+    background: var(--bg-secondary);
+    border-bottom: 1px solid var(--border);
+    padding: 10px 24px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    height: 48px;
+  }
+
+  .header-left {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+  }
+
+  .logo {
+    font-size: 15px;
+    font-weight: 700;
+    letter-spacing: -0.5px;
+  }
+
+  .logo span { color: var(--accent-blue); }
+
+  .nav {
+    display: flex;
+    gap: 4px;
+  }
+
+  .nav a {
+    color: var(--text-secondary);
+    text-decoration: none;
+    font-size: 12px;
+    font-weight: 500;
+    padding: 4px 12px;
+    border-radius: 4px;
+    transition: all 0.15s;
+  }
+
+  .nav a:hover { color: var(--text-primary); background: var(--bg-hover); }
+  .nav a.active { color: var(--accent-blue); background: rgba(59,130,246,0.1); }
+
+  .header-right {
+    font-size: 12px;
+    color: var(--text-muted);
+  }
+
+  /* Stats cards row */
+  .stats-row {
+    display: grid;
+    grid-template-columns: repeat(6, 1fr);
+    gap: 1px;
+    background: var(--border);
+    border-bottom: 1px solid var(--border);
+  }
+
+  .stat-card {
+    background: var(--bg-secondary);
+    padding: 16px 20px;
+    text-align: center;
+  }
+
+  .stat-card .label {
+    font-size: 10px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.6px;
+    color: var(--text-muted);
+    margin-bottom: 6px;
+  }
+
+  .stat-card .value {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 20px;
+    font-weight: 700;
+  }
+
+  .stat-card .sub {
+    font-size: 11px;
+    color: var(--text-muted);
+    margin-top: 4px;
+  }
+
+  .positive { color: var(--accent-green) !important; }
+  .negative { color: var(--accent-red) !important; }
+
+  /* Main content */
+  .content {
+    padding: 20px 24px;
+    max-width: 1600px;
+    margin: 0 auto;
+  }
+
+  .grid-2 {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+    margin-bottom: 20px;
+  }
+
+  .section {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    overflow: hidden;
+  }
+
+  .section-header {
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--border);
+    font-size: 12px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: var(--text-secondary);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  .section-count {
+    font-size: 11px;
+    font-weight: 400;
+    color: var(--text-muted);
+    text-transform: none;
+  }
+
+  .chart-container {
+    padding: 16px;
+    height: 280px;
+    position: relative;
+  }
+
+  /* Table */
+  .table-wrap {
+    max-height: 600px;
+    overflow-y: auto;
+    overflow-x: auto;
+  }
+
+  .table-wrap::-webkit-scrollbar { width: 6px; }
+  .table-wrap::-webkit-scrollbar-track { background: var(--bg-primary); }
+  .table-wrap::-webkit-scrollbar-thumb { background: var(--border-bright); border-radius: 3px; }
+
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 12px;
+  }
+
+  thead th {
+    position: sticky;
+    top: 0;
+    z-index: 10;
+    background: var(--bg-card);
+    padding: 8px 12px;
+    text-align: left;
+    font-weight: 600;
+    color: var(--text-muted);
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.6px;
+    border-bottom: 1px solid var(--border-bright);
+    white-space: nowrap;
+  }
+
+  tbody td {
+    padding: 6px 12px;
+    border-bottom: 1px solid var(--border);
+    white-space: nowrap;
+  }
+
+  tbody tr:hover { background: var(--bg-hover); }
+  tbody tr:nth-child(even) { background: var(--bg-row-alt); }
+  tbody tr:nth-child(even):hover { background: var(--bg-hover); }
+
+  .mono {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+  }
+
+  /* Leg detail popover */
+  .leg-expand {
+    cursor: pointer;
+    color: var(--accent-blue);
+    font-weight: 500;
+  }
+  .leg-expand:hover { text-decoration: underline; }
+
+  .leg-detail-row {
+    display: none;
+  }
+
+  .leg-detail-row td {
+    padding: 8px 12px 8px 40px;
+    background: var(--bg-card);
+  }
+
+  .leg-grid {
+    display: grid;
+    grid-template-columns: auto auto 1fr 1fr 1fr;
+    gap: 4px 16px;
+    font-size: 11px;
+    font-family: 'JetBrains Mono', monospace;
+  }
+
+  .leg-grid .lbl {
+    color: var(--text-muted);
+    font-size: 10px;
+    text-transform: uppercase;
+    font-family: 'Inter', sans-serif;
+  }
+
+  .leg-yes { color: var(--accent-green); }
+  .leg-no { color: var(--accent-red); }
+
+  /* Edge indicator */
+  .edge-positive {
+    background: rgba(34, 197, 94, 0.08);
+    color: var(--accent-green);
+    padding: 1px 6px;
+    border-radius: 3px;
+    font-size: 11px;
+    font-weight: 600;
+  }
+
+  .edge-negative {
+    background: rgba(239, 68, 68, 0.08);
+    color: var(--accent-red);
+    padding: 1px 6px;
+    border-radius: 3px;
+    font-size: 11px;
+    font-weight: 600;
+  }
+
+  /* Lifespan bar */
+  .lifespan-bar {
+    height: 4px;
+    background: var(--border);
+    border-radius: 2px;
+    min-width: 60px;
+    overflow: hidden;
+  }
+
+  .lifespan-fill {
+    height: 100%;
+    background: var(--accent-cyan);
+    border-radius: 2px;
+  }
+
+  .empty-state {
+    padding: 40px;
+    text-align: center;
+    color: var(--text-muted);
+    font-size: 12px;
+  }
+
+  /* Hour distribution chart */
+  .hour-chart { padding: 16px; }
+
+  @media (max-width: 1200px) {
+    .grid-2 { grid-template-columns: 1fr; }
+    .stats-row { grid-template-columns: repeat(3, 1fr); }
+  }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <div class="header-left">
+    <div class="logo">Kalshi<span>MM</span></div>
+    <div class="nav">
+      <a href="/">RFQ Feed</a>
+      <a href="/outcomes" class="active">Outcomes</a>
+    </div>
+  </div>
+  <div class="header-right" id="lastUpdate">Loading...</div>
+</div>
+
+<!-- Stats Row -->
+<div class="stats-row">
+  <div class="stat-card">
+    <div class="label">Total RFQs Tracked</div>
+    <div class="value" id="statTotal">--</div>
+  </div>
+  <div class="stat-card">
+    <div class="label">With Price Data</div>
+    <div class="value" id="statWithPrices">--</div>
+    <div class="sub" id="statPricePct">--</div>
+  </div>
+  <div class="stat-card">
+    <div class="label">Avg Lifespan</div>
+    <div class="value" id="statLifespan">--</div>
+    <div class="sub">before deletion</div>
+  </div>
+  <div class="stat-card">
+    <div class="label">Avg Legs</div>
+    <div class="value" id="statAvgLegs">--</div>
+  </div>
+  <div class="stat-card">
+    <div class="label">Sim Win Rate</div>
+    <div class="value" id="statWinRate">--</div>
+    <div class="sub">target > fair value</div>
+  </div>
+  <div class="stat-card">
+    <div class="label">Sim Total Edge</div>
+    <div class="value" id="statTotalEdge">--</div>
+    <div class="sub">cumulative</div>
+  </div>
+</div>
+
+<div class="content">
+
+  <!-- Charts Row -->
+  <div class="grid-2">
+    <!-- Simulated P&L Chart -->
+    <div class="section">
+      <div class="section-header">Simulated Edge Over Time (if we filled at target cost)</div>
+      <div class="chart-container">
+        <canvas id="edgeChart"></canvas>
+      </div>
+    </div>
+
+    <!-- RFQ Volume by Hour of Day -->
+    <div class="section">
+      <div class="section-header">
+        RFQ Volume by Hour of Day (all-time)
+        <span class="section-count">UTC</span>
+      </div>
+      <div class="chart-container">
+        <canvas id="hourChart"></canvas>
+      </div>
+    </div>
+  </div>
+
+  <!-- RFQ Outcomes Table -->
+  <div class="section">
+    <div class="section-header">
+      RFQ Outcomes
+      <span class="section-count" id="outcomeCount">Loading...</span>
+    </div>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Time</th>
+            <th>Market</th>
+            <th>Legs</th>
+            <th>Target Cost</th>
+            <th>Fair Value (naive)</th>
+            <th>Edge</th>
+            <th>Lifespan</th>
+            <th>Contracts</th>
+          </tr>
+        </thead>
+        <tbody id="outcomeTable">
+          <tr><td colspan="8" class="empty-state">Loading outcome data...</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+</div>
+
+<script>
+  let edgeChart = null;
+  let hourChart = null;
+
+  // ── Helpers ──
+
+  function fmt$(v) {
+    if (v == null) return '--';
+    const n = Number(v);
+    if (isNaN(n)) return '--';
+    return (n >= 0 ? '+' : '-') + '$' + Math.abs(n).toFixed(4);
+  }
+
+  function fmtMs(ms) {
+    if (!ms || ms <= 0) return '--';
+    const sec = Math.floor(ms / 1000);
+    if (sec < 60) return sec + 's';
+    const min = Math.floor(sec / 60);
+    if (min < 60) return min + 'm ' + (sec % 60) + 's';
+    return Math.floor(min / 60) + 'h ' + (min % 60) + 'm';
+  }
+
+  function timeAgo(iso) {
+    if (!iso) return '--';
+    const diff = Date.now() - new Date(iso).getTime();
+    if (diff < 0) return 'just now';
+    const sec = Math.floor(diff / 1000);
+    if (sec < 60) return sec + 's ago';
+    const min = Math.floor(sec / 60);
+    if (min < 60) return min + 'm ago';
+    const hr = Math.floor(min / 60);
+    if (hr < 24) return hr + 'h ago';
+    return Math.floor(hr / 24) + 'd ago';
+  }
+
+  function fmtTimeFull(iso) {
+    if (!iso) return '--';
+    const d = new Date(iso);
+    return d.toLocaleString('en-US', {
+      month: 'short', day: 'numeric',
+      hour: '2-digit', minute: '2-digit', hour12: false
+    });
+  }
+
+  function parseLegs(legsJson) {
+    if (!legsJson) return [];
+    try {
+      return typeof legsJson === 'string' ? JSON.parse(legsJson) : legsJson;
+    } catch { return []; }
+  }
+
+  function parsePrices(pricesJson) {
+    if (!pricesJson) return {};
+    try {
+      return typeof pricesJson === 'string' ? JSON.parse(pricesJson) : pricesJson;
+    } catch { return {}; }
+  }
+
+  async function fetchJSON(url) {
+    const res = await fetch(url);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    return res.json();
+  }
+
+  // ── Update Stats ──
+
+  async function updateStats() {
+    try {
+      const stats = await fetchJSON('/api/outcome-stats');
+      document.getElementById('statTotal').textContent = stats.total_rfqs.toLocaleString();
+      document.getElementById('statWithPrices').textContent = stats.rfqs_with_prices.toLocaleString();
+      document.getElementById('statPricePct').textContent =
+        stats.total_rfqs > 0 ? ((stats.rfqs_with_prices / stats.total_rfqs) * 100).toFixed(0) + '% of total' : '--';
+      document.getElementById('statLifespan').textContent = fmtMs(stats.avg_lifespan_ms);
+      document.getElementById('statAvgLegs').textContent = stats.avg_legs.toFixed(1);
+
+      // Update hour chart
+      updateHourChart(stats.rfqs_by_hour);
+    } catch (err) {
+      console.error('Failed to fetch stats:', err);
+    }
+  }
+
+  // ── Update Backtest ──
+
+  async function updateBacktest() {
+    try {
+      const data = await fetchJSON('/api/backtest');
+
+      const winEl = document.getElementById('statWinRate');
+      winEl.textContent = (data.win_rate * 100).toFixed(1) + '%';
+      winEl.className = 'value ' + (data.win_rate > 0.5 ? 'positive' : 'negative');
+
+      const edgeEl = document.getElementById('statTotalEdge');
+      edgeEl.textContent = (data.total_simulated_pnl >= 0 ? '+' : '') + '$' + data.total_simulated_pnl.toFixed(2);
+      edgeEl.className = 'value ' + (data.total_simulated_pnl >= 0 ? 'positive' : 'negative');
+
+      updateEdgeChart(data.daily_pnl);
+    } catch (err) {
+      console.error('Failed to fetch backtest:', err);
+    }
+  }
+
+  // ── Update Outcomes Table ──
+
+  async function updateOutcomes() {
+    try {
+      const rfqs = await fetchJSON('/api/outcomes');
+      const tbody = document.getElementById('outcomeTable');
+      document.getElementById('outcomeCount').textContent = rfqs.length + ' RFQs';
+
+      if (rfqs.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="8" class="empty-state">No outcome data yet. Price data is captured when RFQs arrive.</td></tr>';
+        return;
+      }
+
+      let html = '';
+      rfqs.forEach((r, i) => {
+        const legs = parseLegs(r.legs_json);
+        const prices = parsePrices(r.leg_prices_snapshot);
+        const numLegs = r.num_legs || legs.length || 0;
+        const targetCost = parseFloat(r.target_cost_dollars) || 0;
+        const contracts = parseFloat(r.contracts_requested) || 0;
+
+        // Compute naive fair value from leg prices
+        let fairValue = null;
+        const priceValues = Object.values(prices);
+        if (priceValues.length > 0) {
+          fairValue = 1;
+          for (const p of priceValues) {
+            fairValue *= p;
+          }
+        }
+
+        const edge = (fairValue !== null && targetCost > 0) ? targetCost - fairValue : null;
+        const edgeCls = edge !== null ? (edge >= 0 ? 'edge-positive' : 'edge-negative') : '';
+        const edgeStr = edge !== null ? ((edge >= 0 ? '+' : '') + (edge * 100).toFixed(2) + 'c') : '--';
+
+        const lifespanPct = r.lifespan_ms ? Math.min(r.lifespan_ms / 120000 * 100, 100) : 0;
+
+        html += `<tr>
+          <td class="mono" style="color:var(--text-secondary)" title="${r.received_at || ''}">${fmtTimeFull(r.received_at)}</td>
+          <td class="mono" style="max-width:220px;overflow:hidden;text-overflow:ellipsis" title="${r.market_ticker || ''}">${r.market_ticker || '--'}</td>
+          <td>
+            ${legs.length > 0
+              ? `<a class="leg-expand" onclick="toggleLegs(event,'ol-${i}')">${numLegs} legs</a>`
+              : (numLegs || '--')}
+          </td>
+          <td class="mono" style="color:var(--accent-green)">${targetCost > 0 ? '$' + targetCost.toFixed(4) : '--'}</td>
+          <td class="mono">${fairValue !== null ? '$' + fairValue.toFixed(4) : '<span style="color:var(--text-muted)">no prices</span>'}</td>
+          <td>${edge !== null ? `<span class="${edgeCls}">${edgeStr}</span>` : '<span style="color:var(--text-muted)">--</span>'}</td>
+          <td>
+            <div style="display:flex;align-items:center;gap:8px">
+              <span class="mono" style="color:var(--text-secondary);min-width:50px">${fmtMs(r.lifespan_ms)}</span>
+              <div class="lifespan-bar"><div class="lifespan-fill" style="width:${lifespanPct}%"></div></div>
+            </div>
+          </td>
+          <td class="mono">${contracts > 0 ? contracts.toFixed(0) : '--'}</td>
+        </tr>`;
+
+        // Expandable leg detail
+        if (legs.length > 0) {
+          html += `<tr id="ol-${i}" class="leg-detail-row">
+            <td colspan="8">
+              <div class="leg-grid">
+                <span class="lbl">Side</span>
+                <span class="lbl">Leg Ticker</span>
+                <span class="lbl">Mid @ RFQ</span>
+                <span class="lbl">Implied Prob</span>
+                <span class="lbl">Status</span>
+                ${legs.map(l => {
+                  const side = (l.side || '').toLowerCase();
+                  const sideCls = side === 'yes' ? 'leg-yes' : 'leg-no';
+                  const ticker = l.market_ticker || '?';
+                  const mid = prices[ticker];
+                  const midStr = mid !== undefined ? mid.toFixed(4) : '--';
+                  const probStr = mid !== undefined ? (mid * 100).toFixed(1) + '%' : '--';
+                  return `
+                    <span class="${sideCls}">${(side || '?').toUpperCase()}</span>
+                    <span style="color:var(--text-primary)">${ticker}</span>
+                    <span>${midStr}</span>
+                    <span style="color:var(--text-secondary)">${probStr}</span>
+                    <span style="color:var(--text-muted)">-</span>
+                  `;
+                }).join('')}
+              </div>
+            </td>
+          </tr>`;
+        }
+      });
+
+      tbody.innerHTML = html;
+    } catch (err) {
+      console.error('Failed to fetch outcomes:', err);
+    }
+  }
+
+  function toggleLegs(event, id) {
+    event.preventDefault();
+    const row = document.getElementById(id);
+    if (row) {
+      row.style.display = row.style.display === 'table-row' ? 'none' : 'table-row';
+    }
+  }
+
+  // ── Charts ──
+
+  function updateEdgeChart(dailyPnl) {
+    if (!dailyPnl || dailyPnl.length === 0) return;
+
+    const labels = dailyPnl.map(d => d.date);
+    const values = dailyPnl.map(d => d.pnl);
+
+    // Cumulative
+    const cumulative = [];
+    let running = 0;
+    for (const v of values) { running += v; cumulative.push(Math.round(running * 100) / 100); }
+
+    const ctx = document.getElementById('edgeChart').getContext('2d');
+
+    if (edgeChart) {
+      edgeChart.data.labels = labels;
+      edgeChart.data.datasets[0].data = values;
+      edgeChart.data.datasets[1].data = cumulative;
+      edgeChart.update('none');
+    } else {
+      edgeChart = new Chart(ctx, {
+        type: 'bar',
+        data: {
+          labels,
+          datasets: [
+            {
+              type: 'bar',
+              label: 'Daily Edge',
+              data: values,
+              backgroundColor: values.map(v => v >= 0 ? 'rgba(34,197,94,0.4)' : 'rgba(239,68,68,0.4)'),
+              borderColor: values.map(v => v >= 0 ? 'rgba(34,197,94,0.8)' : 'rgba(239,68,68,0.8)'),
+              borderWidth: 1,
+              borderRadius: 2,
+              order: 2,
+            },
+            {
+              type: 'line',
+              label: 'Cumulative',
+              data: cumulative,
+              borderColor: '#a855f7',
+              backgroundColor: 'transparent',
+              borderWidth: 2,
+              pointRadius: 2,
+              tension: 0.3,
+              order: 1,
+            }
+          ]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: { labels: { color: '#7c8190', font: { size: 10 }, usePointStyle: true } },
+            tooltip: {
+              backgroundColor: '#161921',
+              borderColor: '#2a3050',
+              borderWidth: 1,
+              titleColor: '#e8eaf0',
+              bodyColor: '#7c8190',
+              callbacks: {
+                label: ctx => ctx.dataset.label + ': $' + ctx.raw.toFixed(4)
+              }
+            }
+          },
+          scales: {
+            x: { grid: { display: false }, ticks: { color: '#4a4f62', font: { size: 9 }, maxTicksLimit: 10 } },
+            y: { grid: { color: 'rgba(30,34,48,0.8)' }, ticks: { color: '#4a4f62', font: { size: 9 }, callback: v => '$' + v } }
+          }
+        }
+      });
+    }
+  }
+
+  function updateHourChart(byHour) {
+    if (!byHour || byHour.length === 0) return;
+
+    // Fill all 24 hours
+    const hourMap = {};
+    byHour.forEach(h => { hourMap[h.hour] = h.count; });
+    const labels = [];
+    const values = [];
+    for (let h = 0; h < 24; h++) {
+      labels.push(h.toString().padStart(2, '0') + ':00');
+      values.push(hourMap[h] || 0);
+    }
+
+    const ctx = document.getElementById('hourChart').getContext('2d');
+
+    if (hourChart) {
+      hourChart.data.labels = labels;
+      hourChart.data.datasets[0].data = values;
+      hourChart.update('none');
+    } else {
+      hourChart = new Chart(ctx, {
+        type: 'bar',
+        data: {
+          labels,
+          datasets: [{
+            data: values,
+            backgroundColor: 'rgba(6,182,212,0.4)',
+            borderColor: 'rgba(6,182,212,0.8)',
+            borderWidth: 1,
+            borderRadius: 2,
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: { display: false },
+            tooltip: {
+              backgroundColor: '#161921',
+              borderColor: '#2a3050',
+              borderWidth: 1,
+              titleColor: '#e8eaf0',
+              bodyColor: '#7c8190',
+              callbacks: { label: ctx => ctx.raw + ' RFQs' }
+            }
+          },
+          scales: {
+            x: { grid: { display: false }, ticks: { color: '#4a4f62', font: { size: 9 }, maxTicksLimit: 12 } },
+            y: { grid: { color: 'rgba(30,34,48,0.8)' }, ticks: { color: '#4a4f62', font: { size: 9 } }, beginAtZero: true }
+          }
+        }
+      });
+    }
+  }
+
+  // ── Refresh ──
+
+  async function refreshAll() {
+    await Promise.all([
+      updateStats(),
+      updateBacktest(),
+      updateOutcomes(),
+    ]);
+    document.getElementById('lastUpdate').textContent =
+      'Updated ' + new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
+  }
+
+  refreshAll();
+  setInterval(refreshAll, 30000);
+</script>
+
+</body>
+</html>

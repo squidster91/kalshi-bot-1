@@ -65,6 +65,21 @@
 
   .logo span { color: var(--accent-blue); }
 
+  .nav {
+    display: flex;
+    gap: 4px;
+  }
+  .nav a {
+    color: var(--text-secondary);
+    text-decoration: none;
+    font-size: 12px;
+    font-weight: 500;
+    padding: 4px 12px;
+    border-radius: 4px;
+  }
+  .nav a:hover { color: var(--text-primary); background: var(--bg-hover); }
+  .nav a.active { color: var(--accent-blue); background: rgba(59,130,246,0.1); }
+
   .badge {
     padding: 2px 8px;
     border-radius: 4px;
@@ -387,6 +402,10 @@
 <div class="header">
   <div class="header-left">
     <div class="logo">Kalshi<span>MM</span></div>
+    <div class="nav">
+      <a href="/" class="active">RFQ Feed</a>
+      <a href="/outcomes">Outcomes</a>
+    </div>
     <span id="modeBadge" class="badge badge-paper">PAPER</span>
     <span id="envBadge" class="badge badge-prod">PRODUCTION</span>
     <span id="killBadge" class="badge badge-kill" style="display:none">KILL SWITCH</span>
