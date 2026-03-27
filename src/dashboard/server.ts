@@ -4,7 +4,7 @@ import { getDb } from '../db/schema';
 import { config } from '../config';
 import { getPositionSummary } from '../risk/positions';
 import { getRiskUtilization, isKillSwitchActive } from '../risk/limits';
-import { getTodayPnL, getTodayStats, getRFQsWithOutcomes, getRFQLegPrices, getRFQOutcomeStats } from '../db/queries';
+import { getTodayPnL, getTodayStats, getRFQsWithOutcomes, getRFQLegPrices, getRFQOutcomeStats, getDailyQualified } from '../db/queries';
 import { logger } from '../logger';
 
 const app = express();
@@ -523,6 +523,20 @@ app.get('/api/backtest', (_req, res) => {
     });
   } catch (err) {
     logger.error('Dashboard /api/backtest error', { error: String(err) });
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// ── API: Qualified RFQ stats (passed all filters) ──
+app.get('/api/qualified-today', (_req, res) => {
+  try {
+    const data = getDailyQualified();
+    res.json({
+      count: data.qualified_count,
+      budget_dollars: data.qualified_budget_cents / 100,
+    });
+  } catch (err) {
+    logger.error('Dashboard /api/qualified-today error', { error: String(err) });
     res.status(500).json({ error: 'Internal server error' });
   }
 });

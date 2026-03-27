@@ -448,7 +448,6 @@
     <div class="logo">Parlay<span>MM</span>Bot</div>
     <div class="nav">
       <a href="/" class="active">RFQ Feed</a>
-      <a href="/outcomes">Outcomes</a>
     </div>
     <span id="modeBadge" class="badge badge-paper">PAPER</span>
     <span id="envBadge" class="badge badge-prod">PRODUCTION</span>
@@ -546,24 +545,24 @@
   <!-- Right: Charts + Categories -->
   <div class="main-right">
 
-    <!-- Summary Stats -->
+    <!-- Qualified RFQs Today -->
     <div class="panel-section">
-      <div class="section-header">Today's Summary</div>
+      <div class="section-header" title="RFQs that passed ALL filters today (PST): not HFT bots, not player props, not $10 budget-mode, not duplicate legs. Persisted day-over-day.">Qualified RFQs Today (PST)</div>
       <div class="summary-grid">
         <div class="summary-cell">
-          <span class="stat-label" title="Team-only RFQs after all filters: high-freq bots, player props, $10 budget-mode, duplicate legs">Filtered RFQs</span>
-          <span class="stat-value" id="sumRfqs">--</span>
+          <span class="stat-label" title="Number of RFQs today that passed all filters (HFT, player props, $10 budget, dupe legs)">Qualified RFQs</span>
+          <span class="stat-value" id="qualCount" style="color:var(--accent-green)">--</span>
+        </div>
+        <div class="summary-cell">
+          <span class="stat-label" title="Sum of target_cost_dollars for all qualified RFQs today. Only includes RFQs that passed all filters.">Total Budget</span>
+          <span class="stat-value" id="qualBudget" style="color:var(--accent-green)">--</span>
         </div>
         <div class="summary-cell">
           <span class="stat-label" title="Average number of legs per RFQ across all DB entries today">Avg Legs</span>
           <span class="stat-value" id="sumAvgLegs">--</span>
         </div>
         <div class="summary-cell">
-          <span class="stat-label" title="Total RFQs stored in DB today (after high-freq bot filter, which drops before DB insert)">Raw Total</span>
-          <span class="stat-value" id="sumRawTotal" style="color:var(--text-muted);font-size:14px">--</span>
-        </div>
-        <div class="summary-cell">
-          <span class="stat-label" title="% of DB RFQs removed by player-prop + $10 budget filters. HFT bots and dupe-leg bots are excluded before DB insert — see filter stats bar for full breakdown.">Filtered Out</span>
+          <span class="stat-label" title="% of all RFQs removed by all filters combined. DB-level: player props + $10 budget. Pre-DB: HFT bots + dupe legs.">Filtered Out</span>
           <span class="stat-value" id="sumFilteredPct" style="color:var(--accent-red);font-size:14px">--</span>
         </div>
       </div>
@@ -965,9 +964,7 @@
       const afterAll = data.after_all_filters || 0;
       const raw = data.total_rfqs || 0;
       const filteredOut = raw - afterAll;
-      document.getElementById('sumRfqs').textContent = afterAll.toLocaleString();
       document.getElementById('sumAvgLegs').textContent = data.avg_legs ? data.avg_legs.toFixed(1) : '--';
-      document.getElementById('sumRawTotal').textContent = raw.toLocaleString();
       document.getElementById('sumFilteredPct').textContent = raw > 0 ? ((filteredOut / raw) * 100).toFixed(0) + '%' : '--';
       // knownBotCount now shown in filter stats bar
 
@@ -1012,6 +1009,19 @@
     if (n.includes('cross')) return { color: '#c084fc' };
     if (n.includes('multi')) return { color: '#60a5fa' };
     return { color: '#4a4f62' };
+  }
+
+  // ── Update Qualified RFQ Stats ──
+
+  async function updateQualifiedStats() {
+    try {
+      const data = await fetchJSON('/api/qualified-today');
+      document.getElementById('qualCount').textContent = (data.count || 0).toLocaleString();
+      const budget = data.budget_dollars || 0;
+      document.getElementById('qualBudget').textContent = '$' + budget.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    } catch (err) {
+      console.error('Failed to fetch qualified stats:', err);
+    }
   }
 
   // ── Update Filter Stats Bar ──
@@ -1183,6 +1193,7 @@
       updateRFQs(),
       updateVolumeChart(),
       updateCategories(),
+      updateQualifiedStats(),
       updateBudgetChart(),
       updateLegsChart(),
       updateFilterStats(),

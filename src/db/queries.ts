@@ -329,6 +329,30 @@ export function saveKnownBot(creatorId: string): void {
   `).run(creatorId, new Date().toISOString());
 }
 
+// ── Daily Qualified RFQ Tracking ──
+
+export function incrementDailyQualified(budgetDollars: number): void {
+  const db = getDb();
+  const today = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Los_Angeles' });
+  const budgetCents = Math.round(budgetDollars * 100);
+  db.prepare(`
+    INSERT INTO daily_qualified (date, qualified_count, qualified_budget_cents)
+    VALUES (?, 1, ?)
+    ON CONFLICT(date) DO UPDATE SET
+      qualified_count = qualified_count + 1,
+      qualified_budget_cents = qualified_budget_cents + ?
+  `).run(today, budgetCents, budgetCents);
+}
+
+export function getDailyQualified(date?: string): { qualified_count: number; qualified_budget_cents: number } {
+  const db = getDb();
+  const d = date || new Date().toLocaleDateString('en-CA', { timeZone: 'America/Los_Angeles' });
+  const row = db.prepare(`
+    SELECT qualified_count, qualified_budget_cents FROM daily_qualified WHERE date = ?
+  `).get(d) as { qualified_count: number; qualified_budget_cents: number } | undefined;
+  return row || { qualified_count: 0, qualified_budget_cents: 0 };
+}
+
 // ── Price Cache ──
 
 export function loadPriceCache(): Map<string, { mid: number; ts: number }> {

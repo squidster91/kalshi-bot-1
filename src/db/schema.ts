@@ -140,6 +140,13 @@ function initSchema(db: Database.Database): void {
       FOREIGN KEY (rfq_id) REFERENCES rfqs_seen(id)
     );
 
+    -- Daily qualified RFQ summaries (day-over-day tracking)
+    CREATE TABLE IF NOT EXISTS daily_qualified (
+      date TEXT PRIMARY KEY,
+      qualified_count INTEGER DEFAULT 0,
+      qualified_budget_cents INTEGER DEFAULT 0
+    );
+
     CREATE INDEX IF NOT EXISTS idx_rfqs_received_at ON rfqs_seen(received_at);
     CREATE INDEX IF NOT EXISTS idx_quotes_status ON quotes_submitted(status);
     CREATE INDEX IF NOT EXISTS idx_pnl_timestamp ON pnl_log(timestamp);

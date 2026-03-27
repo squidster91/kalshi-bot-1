@@ -2,7 +2,7 @@ import { EventEmitter } from 'events';
 import { CommunicationsManager } from '../api/websocket';
 import { OrderbookManager } from '../api/websocket';
 import { MVELeg, getMarket, getMarkets } from '../api/rest';
-import { insertRFQ, insertRFQLegPrices, saveRFQLegPricesSnapshot, markRFQDeleted, upsertPriceCache, loadPriceCache, loadKnownBots, saveKnownBot } from '../db/queries';
+import { insertRFQ, insertRFQLegPrices, saveRFQLegPricesSnapshot, markRFQDeleted, upsertPriceCache, loadPriceCache, loadKnownBots, saveKnownBot, incrementDailyQualified } from '../db/queries';
 import { logger } from '../logger';
 
 export interface ParsedRFQ {
@@ -181,6 +181,9 @@ export class RFQListener extends EventEmitter {
 
       this.reportFilterStats(now);
       this.rfqCount++;
+
+      // Track qualified RFQ (passed all filters) — persisted day-over-day
+      try { incrementDailyQualified(parsed.targetCostDollars); } catch { /* ok */ }
 
       // Log to database
       insertRFQ({
