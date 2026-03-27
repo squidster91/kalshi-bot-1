@@ -61,31 +61,60 @@ export class RFQListener extends EventEmitter {
     logger.info('RFQ listener started');
   }
 
-  // Player prop detection pattern
-  private static PLAYER_PROP_PATTERN = /PTS|REB|AST|3PM|TPM|STL|BLK/i;
+  // Bot detection: track RFQ frequency per creator
+  private creatorRfqTimes: Map<string, number[]> = new Map();
+  private static BOT_THRESHOLD = 10; // 10+ RFQs per minute = bot
+  private static BOT_WINDOW_MS = 60_000; // 1 minute window
+  private knownBots = new Set<string>();
+
+  // Counters for before/after reporting
+  private totalSeen = 0;
+  private botFiltered = 0;
+  private lastReportTime = Date.now();
 
   private handleRFQ(msg: Record<string, unknown>): void {
     try {
       const parsed = this.parseRFQ(msg);
       if (!parsed) return;
 
-      // Filter: skip player-prop parlays (only process team-only)
-      const hasPlayerProps = parsed.legs.some(
-        l => l.market_ticker && RFQListener.PLAYER_PROP_PATTERN.test(l.market_ticker)
-      );
-      if (hasPlayerProps) {
-        this.emit('rfq_filtered', { id: parsed.id, reason: 'player_props' });
-        return;
-      }
+      this.totalSeen++;
 
-      // Filter: skip likely bot/spam RFQs
-      // Pattern: $10 budget-mode with 0 contracts is the most common bot pattern (~90% of traffic)
-      const isBotLikely = (
-        parsed.targetCostDollars === 10 && parsed.contractsRequested === 0 && parsed.legs.length >= 3
-      );
-      if (isBotLikely) {
-        this.emit('rfq_filtered', { id: parsed.id, reason: 'bot_pattern' });
-        return;
+      // Bot detection: track creator frequency
+      const creatorId = parsed.creatorId;
+      if (creatorId) {
+        const now = Date.now();
+        let times = this.creatorRfqTimes.get(creatorId);
+        if (!times) {
+          times = [];
+          this.creatorRfqTimes.set(creatorId, times);
+        }
+        times.push(now);
+
+        // Trim to window
+        const cutoff = now - RFQListener.BOT_WINDOW_MS;
+        while (times.length > 0 && times[0] < cutoff) times.shift();
+
+        // If over threshold, mark as bot
+        if (times.length >= RFQListener.BOT_THRESHOLD) {
+          this.knownBots.add(creatorId);
+        }
+
+        // Skip if known bot
+        if (this.knownBots.has(creatorId)) {
+          this.botFiltered++;
+          // Report every 30 seconds
+          if (now - this.lastReportTime > 30_000) {
+            logger.info('Bot filter stats', {
+              totalSeen: this.totalSeen,
+              botFiltered: this.botFiltered,
+              passed: this.totalSeen - this.botFiltered,
+              pctFiltered: ((this.botFiltered / this.totalSeen) * 100).toFixed(1) + '%',
+              knownBots: this.knownBots.size,
+            });
+            this.lastReportTime = now;
+          }
+          return;
+        }
       }
 
       this.rfqCount++;
