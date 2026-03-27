@@ -68,19 +68,21 @@ app.get('/api/stats', (_req, res) => {
   }
 });
 
-// ── API: Recent RFQs (lightweight — no legs_json) ──
+// ── API: Recent RFQs (lightweight) ──
 app.get('/api/rfqs', (_req, res) => {
   try {
     const db = getDb();
+    const today = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Los_Angeles' });
     const rfqs = db.prepare(`
       SELECT id, market_ticker, event_ticker, legs_json, contracts_requested,
              target_cost_dollars, received_at, quoted, quote_id,
              quote_price_yes, quote_price_no, computed_fair_value,
              num_legs, is_same_game, leg_prices_snapshot, has_player_props
       FROM rfqs_seen
-      ORDER BY received_at DESC
-      LIMIT 200
-    `).all();
+      WHERE received_at LIKE ? || '%' AND has_player_props = 0
+      ORDER BY rowid DESC
+      LIMIT 100
+    `).all(today);
     res.json(rfqs);
   } catch (err) {
     logger.error('Dashboard /api/rfqs error', { error: String(err) });
