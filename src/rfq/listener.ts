@@ -61,10 +61,32 @@ export class RFQListener extends EventEmitter {
     logger.info('RFQ listener started');
   }
 
+  // Player prop detection pattern
+  private static PLAYER_PROP_PATTERN = /PTS|REB|AST|3PM|TPM|STL|BLK/i;
+
   private handleRFQ(msg: Record<string, unknown>): void {
     try {
       const parsed = this.parseRFQ(msg);
       if (!parsed) return;
+
+      // Filter: skip player-prop parlays (only process team-only)
+      const hasPlayerProps = parsed.legs.some(
+        l => l.market_ticker && RFQListener.PLAYER_PROP_PATTERN.test(l.market_ticker)
+      );
+      if (hasPlayerProps) {
+        this.emit('rfq_filtered', { id: parsed.id, reason: 'player_props' });
+        return;
+      }
+
+      // Filter: skip likely bot/spam RFQs
+      // Pattern: $10 budget-mode with 0 contracts is the most common bot pattern (~90% of traffic)
+      const isBotLikely = (
+        parsed.targetCostDollars === 10 && parsed.contractsRequested === 0 && parsed.legs.length >= 3
+      );
+      if (isBotLikely) {
+        this.emit('rfq_filtered', { id: parsed.id, reason: 'bot_pattern' });
+        return;
+      }
 
       this.rfqCount++;
 

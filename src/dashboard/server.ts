@@ -61,7 +61,7 @@ app.get('/api/stats', (_req, res) => {
   }
 });
 
-// ── API: Recent RFQs (increased to 500) ──
+// ── API: Recent RFQs (lightweight — no legs_json) ──
 app.get('/api/rfqs', (_req, res) => {
   try {
     const db = getDb();
@@ -69,10 +69,10 @@ app.get('/api/rfqs', (_req, res) => {
       SELECT id, market_ticker, event_ticker, legs_json, contracts_requested,
              target_cost_dollars, received_at, quoted, quote_id,
              quote_price_yes, quote_price_no, computed_fair_value,
-             num_legs, is_same_game, leg_prices_snapshot
+             num_legs, is_same_game, leg_prices_snapshot, has_player_props
       FROM rfqs_seen
       ORDER BY received_at DESC
-      LIMIT 500
+      LIMIT 200
     `).all();
     res.json(rfqs);
   } catch (err) {
@@ -246,42 +246,44 @@ app.get('/api/rfq-categories', (_req, res) => {
     const db = getDb();
     const today = new Date().toISOString().slice(0, 10);
 
-    const rows = db.prepare(`
-      SELECT market_ticker, COUNT(*) as count
-      FROM rfqs_seen
-      WHERE received_at LIKE ? || '%'
-      GROUP BY market_ticker
-    `).all(today) as Array<{ market_ticker: string; count: number }>;
-
-    // Aggregate by category parsed from ticker prefix
-    const categories: Record<string, number> = {};
-    let totalLegs = 0;
-    let totalRfqs = 0;
-
-    // Use pre-computed aggregates — no scanning legs_json
+    // Single efficient aggregate query
     const aggRow = db.prepare(`
       SELECT COUNT(*) as total,
-             SUM(num_legs) as total_legs,
-             SUM(CASE WHEN has_player_props = 1 THEN 1 ELSE 0 END) as has_players
+             COALESCE(SUM(num_legs), 0) as total_legs,
+             SUM(CASE WHEN has_player_props = 1 THEN 1 ELSE 0 END) as has_players,
+             SUM(CASE WHEN market_ticker LIKE 'KXMVE%' OR market_ticker LIKE '%CROSS%' THEN 1 ELSE 0 END) as cross_event,
+             SUM(CASE WHEN market_ticker LIKE '%NBA%' AND market_ticker NOT LIKE 'KXMVE%' AND market_ticker NOT LIKE '%CROSS%' THEN 1 ELSE 0 END) as nba_multi,
+             SUM(CASE WHEN market_ticker LIKE '%NFL%' AND market_ticker NOT LIKE 'KXMVE%' AND market_ticker NOT LIKE '%CROSS%' THEN 1 ELSE 0 END) as nfl_multi,
+             SUM(CASE WHEN market_ticker LIKE '%MLB%' AND market_ticker NOT LIKE 'KXMVE%' AND market_ticker NOT LIKE '%CROSS%' THEN 1 ELSE 0 END) as mlb_multi,
+             SUM(CASE WHEN market_ticker LIKE '%NHL%' AND market_ticker NOT LIKE 'KXMVE%' AND market_ticker NOT LIKE '%CROSS%' THEN 1 ELSE 0 END) as nhl_multi,
+             SUM(CASE WHEN market_ticker LIKE '%NCAAB%' OR market_ticker LIKE '%CBB%' THEN 1 ELSE 0 END) as ncaab_multi,
+             SUM(CASE WHEN market_ticker LIKE '%NCAAF%' OR market_ticker LIKE '%CFB%' THEN 1 ELSE 0 END) as ncaaf_multi
       FROM rfqs_seen WHERE received_at LIKE ? || '%'
-    `).get(today) as { total: number; total_legs: number; has_players: number } | undefined;
+    `).get(today) as Record<string, number> | undefined;
 
-    totalRfqs = aggRow?.total || 0;
-    let totalLegsSum = aggRow?.total_legs || 0;
-    let hasPlayers = aggRow?.has_players || 0;
-    let teamOnly = totalRfqs - hasPlayers;
-    totalLegs = totalLegsSum;
+    const total = aggRow?.total || 0;
+    const totalLegs = aggRow?.total_legs || 0;
+    const hasPlayers = aggRow?.has_players || 0;
 
-    for (const row of rows) {
-      const cat = parseCategory(row.market_ticker || '');
-      categories[cat] = (categories[cat] || 0) + row.count;
+    const categories: Record<string, number> = {};
+    if (aggRow) {
+      if (aggRow.cross_event) categories['Cross-Event'] = aggRow.cross_event;
+      if (aggRow.nba_multi) categories['NBA Multi'] = aggRow.nba_multi;
+      if (aggRow.nfl_multi) categories['NFL Multi'] = aggRow.nfl_multi;
+      if (aggRow.mlb_multi) categories['MLB Multi'] = aggRow.mlb_multi;
+      if (aggRow.nhl_multi) categories['NHL Multi'] = aggRow.nhl_multi;
+      if (aggRow.ncaab_multi) categories['NCAAB Multi'] = aggRow.ncaab_multi;
+      if (aggRow.ncaaf_multi) categories['NCAAF Multi'] = aggRow.ncaaf_multi;
+      const counted = Object.values(categories).reduce((a, b) => a + b, 0);
+      const other = total - counted;
+      if (other > 0) categories['Multi-Game Combo'] = other;
     }
 
     res.json({
       categories,
-      avg_legs: totalRfqs > 0 ? totalLegs / totalRfqs : 0,
-      total_rfqs: totalRfqs,
-      team_only: teamOnly,
+      avg_legs: total > 0 ? totalLegs / total : 0,
+      total_rfqs: total,
+      team_only: total - hasPlayers,
       has_players: hasPlayers,
     });
   } catch (err) {
