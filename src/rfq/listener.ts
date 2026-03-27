@@ -1,7 +1,7 @@
 import { EventEmitter } from 'events';
 import { CommunicationsManager } from '../api/websocket';
 import { OrderbookManager } from '../api/websocket';
-import { MVELeg } from '../api/rest';
+import { MVELeg, getMarket } from '../api/rest';
 import { insertRFQ, insertRFQLegPrices, saveRFQLegPricesSnapshot, markRFQDeleted } from '../db/queries';
 import { logger } from '../logger';
 
@@ -70,32 +70,10 @@ export class RFQListener extends EventEmitter {
         target_cost_dollars: parsed.targetCostDollars.toString(),
       });
 
-      // Capture leg prices from orderbook at RFQ time
-      if (this.orderbook) {
-        try {
-          const legPrices: Array<{ ticker: string; side: string; midPrice: number | null }> = [];
-          const priceSnapshot: Record<string, number> = {};
-
-          for (const leg of parsed.legs) {
-            const mid = this.orderbook.getMidPrice(leg.market_ticker);
-            legPrices.push({
-              ticker: leg.market_ticker,
-              side: leg.side,
-              midPrice: mid,
-            });
-            if (mid !== null) {
-              priceSnapshot[leg.market_ticker] = mid;
-            }
-          }
-
-          insertRFQLegPrices(parsed.id, legPrices);
-          if (Object.keys(priceSnapshot).length > 0) {
-            saveRFQLegPricesSnapshot(parsed.id, priceSnapshot);
-          }
-        } catch (err) {
-          logger.debug('Failed to capture leg prices for RFQ', { id: parsed.id, error: String(err) });
-        }
-      }
+      // Capture leg prices asynchronously (don't block RFQ pipeline)
+      this.captureLegPrices(parsed.id, parsed.legs).catch(err => {
+        logger.debug('Failed to capture leg prices for RFQ', { id: parsed.id, error: String(err) });
+      });
 
       logger.info('RFQ received', {
         id: parsed.id,
@@ -141,6 +119,70 @@ export class RFQListener extends EventEmitter {
       createdTs: msg.created_ts as string ?? '',
       receivedAt: Date.now(),
     };
+  }
+
+  // Price cache: ticker -> { mid, ts }. Avoids hammering API for same ticker.
+  private priceCache: Map<string, { mid: number; ts: number }> = new Map();
+  private static CACHE_TTL_MS = 30_000; // 30 seconds
+
+  private async captureLegPrices(rfqId: string, legs: MVELeg[]): Promise<void> {
+    const legPrices: Array<{ ticker: string; side: string; midPrice: number | null }> = [];
+    const priceSnapshot: Record<string, number> = {};
+    const now = Date.now();
+
+    for (const leg of legs) {
+      let mid: number | null = null;
+
+      // 1. Try orderbook (in-memory, instant)
+      if (this.orderbook) {
+        mid = this.orderbook.getMidPrice(leg.market_ticker);
+      }
+
+      // 2. Try cache
+      if (mid === null) {
+        const cached = this.priceCache.get(leg.market_ticker);
+        if (cached && (now - cached.ts) < RFQListener.CACHE_TTL_MS) {
+          mid = cached.mid;
+        }
+      }
+
+      // 3. Fall back to REST API
+      if (mid === null) {
+        try {
+          const resp = await getMarket(leg.market_ticker);
+          const m = resp.market;
+          if (m.yes_bid > 0 && m.yes_ask > 0) {
+            mid = (m.yes_bid + m.yes_ask) / 2 / 100; // Convert cents to dollars
+          } else if (m.last_price > 0) {
+            mid = m.last_price / 100;
+          }
+          if (mid !== null) {
+            this.priceCache.set(leg.market_ticker, { mid, ts: now });
+          }
+        } catch {
+          // Market might not exist or API error - skip
+        }
+      }
+
+      legPrices.push({ ticker: leg.market_ticker, side: leg.side, midPrice: mid });
+      if (mid !== null) {
+        priceSnapshot[leg.market_ticker] = mid;
+      }
+    }
+
+    insertRFQLegPrices(rfqId, legPrices);
+    if (Object.keys(priceSnapshot).length > 0) {
+      saveRFQLegPricesSnapshot(rfqId, priceSnapshot);
+    }
+
+    // Clean old cache entries periodically
+    if (this.priceCache.size > 5000) {
+      for (const [k, v] of this.priceCache) {
+        if (now - v.ts > RFQListener.CACHE_TTL_MS * 10) {
+          this.priceCache.delete(k);
+        }
+      }
+    }
   }
 
   getStats(): { rfqCount: number } {
