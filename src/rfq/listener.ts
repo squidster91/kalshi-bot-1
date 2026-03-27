@@ -67,9 +67,13 @@ export class RFQListener extends EventEmitter {
   private static BOT_WINDOW_MS = 60_000; // 1 minute window
   private knownBots = new Set<string>();
 
-  // Counters for before/after reporting
+  // Player prop detection
+  private static PLAYER_PROP_PATTERN = /PTS|REB|AST|3PM|TPM|STL|BLK/i;
+
+  // Counters for reporting
   private totalSeen = 0;
   private botFiltered = 0;
+  private playerFiltered = 0;
   private lastReportTime = Date.now();
 
   private handleRFQ(msg: Record<string, unknown>): void {
@@ -78,11 +82,11 @@ export class RFQListener extends EventEmitter {
       if (!parsed) return;
 
       this.totalSeen++;
+      const now = Date.now();
 
-      // Bot detection: track creator frequency
+      // Filter 1: Bot detection — creator frequency
       const creatorId = parsed.creatorId;
       if (creatorId) {
-        const now = Date.now();
         let times = this.creatorRfqTimes.get(creatorId);
         if (!times) {
           times = [];
@@ -94,29 +98,28 @@ export class RFQListener extends EventEmitter {
         const cutoff = now - RFQListener.BOT_WINDOW_MS;
         while (times.length > 0 && times[0] < cutoff) times.shift();
 
-        // If over threshold, mark as bot
         if (times.length >= RFQListener.BOT_THRESHOLD) {
           this.knownBots.add(creatorId);
         }
 
-        // Skip if known bot
         if (this.knownBots.has(creatorId)) {
           this.botFiltered++;
-          // Report every 30 seconds
-          if (now - this.lastReportTime > 30_000) {
-            logger.info('Bot filter stats', {
-              totalSeen: this.totalSeen,
-              botFiltered: this.botFiltered,
-              passed: this.totalSeen - this.botFiltered,
-              pctFiltered: ((this.botFiltered / this.totalSeen) * 100).toFixed(1) + '%',
-              knownBots: this.knownBots.size,
-            });
-            this.lastReportTime = now;
-          }
+          this.reportFilterStats(now);
           return;
         }
       }
 
+      // Filter 2: Skip player-prop parlays (team-only)
+      const hasPlayerProps = parsed.legs.some(
+        l => l.market_ticker && RFQListener.PLAYER_PROP_PATTERN.test(l.market_ticker)
+      );
+      if (hasPlayerProps) {
+        this.playerFiltered++;
+        this.reportFilterStats(now);
+        return;
+      }
+
+      this.reportFilterStats(now);
       this.rfqCount++;
 
       // Log to database
@@ -148,6 +151,21 @@ export class RFQListener extends EventEmitter {
         error: String(err),
         msg: JSON.stringify(msg).slice(0, 500),
       });
+    }
+  }
+
+  private reportFilterStats(now: number): void {
+    if (now - this.lastReportTime > 30_000 && this.totalSeen > 0) {
+      const passed = this.totalSeen - this.botFiltered - this.playerFiltered;
+      logger.info('Filter stats', {
+        totalSeen: this.totalSeen,
+        botFiltered: this.botFiltered,
+        playerFiltered: this.playerFiltered,
+        passed,
+        pctFiltered: (((this.botFiltered + this.playerFiltered) / this.totalSeen) * 100).toFixed(1) + '%',
+        knownBots: this.knownBots.size,
+      });
+      this.lastReportTime = now;
     }
   }
 
