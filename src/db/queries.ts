@@ -228,7 +228,7 @@ export function getDailyPnL(date: string): number {
 }
 
 export function getTodayPnL(): number {
-  const today = new Date().toISOString().slice(0, 10);
+  const today = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Los_Angeles' });
   return getDailyPnL(today);
 }
 
@@ -478,7 +478,7 @@ export function getTodayStats(): {
   quotes_filled: number;
 } {
   const db = getDb();
-  const today = new Date().toISOString().slice(0, 10);
+  const today = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Los_Angeles' });
 
   const rfqs = db.prepare(`
     SELECT COUNT(*) as count FROM rfqs_seen WHERE received_at LIKE ? || '%'

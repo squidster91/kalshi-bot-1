@@ -251,7 +251,7 @@ app.get('/api/rfq-volume', (_req, res) => {
 app.get('/api/rfq-categories', (_req, res) => {
   try {
     const db = getDb();
-    const today = new Date().toISOString().slice(0, 10);
+    const today = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Los_Angeles' });
 
     // Single efficient aggregate query
     const aggRow = db.prepare(`
@@ -329,7 +329,7 @@ app.get('/api/rfq-categories', (_req, res) => {
 app.get('/api/budget-distribution', (_req, res) => {
   try {
     const db = getDb();
-    const today = new Date().toISOString().slice(0, 10);
+    const today = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Los_Angeles' });
 
     // Get distribution of target costs, excluding player props (has_player_props=0)
     const rows = db.prepare(`
@@ -531,7 +531,7 @@ app.get('/api/backtest', (_req, res) => {
 app.get('/api/legs-distribution', (_req, res) => {
   try {
     const db = getDb();
-    const today = new Date().toISOString().slice(0, 10);
+    const today = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Los_Angeles' });
     const rows = db.prepare(`
       SELECT num_legs, COUNT(*) as count
       FROM rfqs_seen
