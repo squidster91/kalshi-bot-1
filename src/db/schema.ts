@@ -112,6 +112,13 @@ function initSchema(db: Database.Database): void {
       timestamp TEXT NOT NULL
     );
 
+    -- Known bot creators: persisted across restarts
+    CREATE TABLE IF NOT EXISTS known_bots (
+      creator_id TEXT PRIMARY KEY,
+      first_detected TEXT NOT NULL,
+      rfq_count INTEGER DEFAULT 0
+    );
+
     -- Persistent price cache: latest known price per ticker
     CREATE TABLE IF NOT EXISTS price_cache (
       ticker TEXT PRIMARY KEY,

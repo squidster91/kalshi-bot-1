@@ -312,6 +312,25 @@ export function upsertPriceCache(ticker: string, midPrice: number): void {
   `).run(ticker, midPrice, new Date().toISOString());
 }
 
+// ── Known Bots ──
+
+export function loadKnownBots(): Set<string> {
+  const db = getDb();
+  const rows = db.prepare(`SELECT creator_id FROM known_bots`).all() as Array<{ creator_id: string }>;
+  return new Set(rows.map(r => r.creator_id));
+}
+
+export function saveKnownBot(creatorId: string): void {
+  const db = getDb();
+  db.prepare(`
+    INSERT INTO known_bots (creator_id, first_detected, rfq_count)
+    VALUES (?, ?, 1)
+    ON CONFLICT(creator_id) DO UPDATE SET rfq_count = rfq_count + 1
+  `).run(creatorId, new Date().toISOString());
+}
+
+// ── Price Cache ──
+
 export function loadPriceCache(): Map<string, { mid: number; ts: number }> {
   const db = getDb();
   const rows = db.prepare(`SELECT ticker, mid_price, updated_at FROM price_cache`).all() as Array<{

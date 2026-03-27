@@ -2,7 +2,7 @@ import { EventEmitter } from 'events';
 import { CommunicationsManager } from '../api/websocket';
 import { OrderbookManager } from '../api/websocket';
 import { MVELeg, getMarket, getMarkets } from '../api/rest';
-import { insertRFQ, insertRFQLegPrices, saveRFQLegPricesSnapshot, markRFQDeleted, upsertPriceCache, loadPriceCache } from '../db/queries';
+import { insertRFQ, insertRFQLegPrices, saveRFQLegPricesSnapshot, markRFQDeleted, upsertPriceCache, loadPriceCache, loadKnownBots, saveKnownBot } from '../db/queries';
 import { logger } from '../logger';
 
 export interface ParsedRFQ {
@@ -37,6 +37,14 @@ export class RFQListener extends EventEmitter {
       logger.info(`Loaded ${this.priceCache.size} cached prices from database`);
     } catch (err) {
       logger.warn('Failed to load price cache', { error: String(err) });
+    }
+
+    // Load known bots from database
+    try {
+      this.knownBots = loadKnownBots();
+      logger.info(`Loaded ${this.knownBots.size} known bots from database`);
+    } catch (err) {
+      logger.warn('Failed to load known bots', { error: String(err) });
     }
   }
 
@@ -98,8 +106,10 @@ export class RFQListener extends EventEmitter {
         const cutoff = now - RFQListener.BOT_WINDOW_MS;
         while (times.length > 0 && times[0] < cutoff) times.shift();
 
-        if (times.length >= RFQListener.BOT_THRESHOLD) {
+        if (times.length >= RFQListener.BOT_THRESHOLD && !this.knownBots.has(creatorId)) {
           this.knownBots.add(creatorId);
+          try { saveKnownBot(creatorId); } catch { /* ok */ }
+          logger.info('New bot detected', { creatorId, knownBots: this.knownBots.size });
         }
 
         if (this.knownBots.has(creatorId)) {
