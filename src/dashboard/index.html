@@ -499,12 +499,12 @@
   <!-- Left: RFQ Table -->
   <div class="main-left">
     <div class="section-header">
-      RFQ Feed <span style="font-size:10px;color:var(--text-muted);font-weight:400">(team-only, bot-filtered)</span>
+      RFQ Feed
       <span class="section-count" id="rfqCount">Loading...</span>
     </div>
     <div style="background:rgba(59,130,246,0.08);border:1px solid rgba(59,130,246,0.2);border-radius:6px;padding:6px 12px;margin-bottom:8px;font-size:11px;color:var(--text-secondary)">
       Filters active: <strong style="color:var(--accent-cyan)">Player-prop parlays removed</strong> (PTS/REB/AST/3PM/STL/BLK).
-      <strong style="color:var(--accent-green)">Bot creators filtered</strong> (10+ RFQs/min, <span id="knownBotCount">--</span> historic bots identified).
+      <strong style="color:var(--accent-green)">Bot creators filtered</strong> (3+ RFQs/min, <span id="knownBotCount">--</span> historic bots identified).
     </div>
     <div class="filter-bar">
       <label>Legs:</label>
@@ -577,6 +577,15 @@
       </div>
     </div>
 
+    <!-- Budget Distribution -->
+    <div class="panel-section">
+      <div class="section-header">Budget Distribution <span style="font-size:10px;color:var(--text-muted);font-weight:400">(team-only, post bot-filter)</span></div>
+      <div id="budgetStats" style="font-size:11px;color:var(--text-secondary);padding:0 0 6px 0"></div>
+      <div class="chart-container">
+        <canvas id="budgetChart"></canvas>
+      </div>
+    </div>
+
     <!-- Category Breakdown -->
     <div class="panel-section" style="flex:1;overflow:hidden;display:flex;flex-direction:column">
       <div class="section-header">
@@ -593,6 +602,7 @@
 
 <script>
   let volumeChart = null;
+  let budgetChart = null;
 
   // ── Helpers ──
 
@@ -997,6 +1007,79 @@
     return { color: '#4a4f62' };
   }
 
+  // ── Update Budget Distribution Chart ──
+
+  async function updateBudgetChart() {
+    try {
+      const data = await fetchJSON('/api/budget-distribution');
+      if (!data || !data.buckets) return;
+
+      const labels = data.buckets.map(b => b.label);
+      const values = data.buckets.map(b => b.count);
+
+      // Stats text
+      const statsEl = document.getElementById('budgetStats');
+      const pct10 = data.total_team_only > 0
+        ? ((data.exact_10_budget_mode / data.total_team_only) * 100).toFixed(1)
+        : '0';
+      statsEl.innerHTML = `$10 budget + 0 contracts: <strong style="color:var(--accent-yellow)">${data.exact_10_budget_mode.toLocaleString()}</strong> of ${data.total_team_only.toLocaleString()} (${pct10}%)`;
+
+      const ctx = document.getElementById('budgetChart').getContext('2d');
+
+      if (budgetChart) {
+        budgetChart.data.labels = labels;
+        budgetChart.data.datasets[0].data = values;
+        budgetChart.update('none');
+      } else {
+        budgetChart = new Chart(ctx, {
+          type: 'bar',
+          data: {
+            labels,
+            datasets: [{
+              data: values,
+              backgroundColor: labels.map(l => l === '$5-10' ? 'rgba(234,179,8,0.6)' : 'rgba(168,85,247,0.5)'),
+              borderColor: labels.map(l => l === '$5-10' ? 'rgba(234,179,8,0.9)' : 'rgba(168,85,247,0.8)'),
+              borderWidth: 1,
+              borderRadius: 2,
+            }]
+          },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+              legend: { display: false },
+              tooltip: {
+                backgroundColor: '#161921',
+                borderColor: '#2a3050',
+                borderWidth: 1,
+                titleColor: '#e8eaf0',
+                bodyColor: '#7c8190',
+                padding: 8,
+                displayColors: false,
+                callbacks: {
+                  label: ctx => ctx.raw.toLocaleString() + ' RFQs'
+                }
+              }
+            },
+            scales: {
+              x: {
+                grid: { display: false },
+                ticks: { color: '#4a4f62', font: { size: 9 }, maxRotation: 45 },
+              },
+              y: {
+                grid: { color: 'rgba(30,34,48,0.8)' },
+                ticks: { color: '#4a4f62', font: { size: 9 }, maxTicksLimit: 5 },
+                beginAtZero: true,
+              }
+            }
+          }
+        });
+      }
+    } catch (err) {
+      console.error('Failed to fetch budget distribution:', err);
+    }
+  }
+
   // ── Refresh All ──
 
   async function refreshAll() {
@@ -1005,6 +1088,7 @@
       updateRFQs(),
       updateVolumeChart(),
       updateCategories(),
+      updateBudgetChart(),
     ]);
     document.getElementById('lastUpdate').textContent =
       new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false, timeZone: 'America/Los_Angeles' }) + ' PT';

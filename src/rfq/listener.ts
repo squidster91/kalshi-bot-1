@@ -71,7 +71,7 @@ export class RFQListener extends EventEmitter {
 
   // Bot detection: track RFQ frequency per creator
   private creatorRfqTimes: Map<string, number[]> = new Map();
-  private static BOT_THRESHOLD = 10; // 10+ RFQs per minute = bot
+  private static BOT_THRESHOLD = 3; // 3+ RFQs per minute = bot
   private static BOT_WINDOW_MS = 60_000; // 1 minute window
   private knownBots = new Set<string>();
 
