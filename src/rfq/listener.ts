@@ -82,19 +82,35 @@ export class RFQListener extends EventEmitter {
   private creatorLegHashes: Map<string, Map<string, number>> = new Map();
   private static DUPE_LEG_THRESHOLD = 3; // same leg combo 3+ times from same creator = bot
 
-  // Counters for reporting
+  // Counters for reporting (reset at PST midnight)
   private totalSeen = 0;
   private botFiltered = 0;
   private playerFiltered = 0;
   private budgetModeFiltered = 0;
   private dupeLegFiltered = 0;
   private lastReportTime = Date.now();
+  private counterDate = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Los_Angeles' });
+
+  private checkDayRollover(): void {
+    const today = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Los_Angeles' });
+    if (today !== this.counterDate) {
+      logger.info('PST day rollover — resetting filter counters', { oldDate: this.counterDate, newDate: today });
+      this.totalSeen = 0;
+      this.botFiltered = 0;
+      this.playerFiltered = 0;
+      this.budgetModeFiltered = 0;
+      this.dupeLegFiltered = 0;
+      this.creatorLegHashes.clear();
+      this.counterDate = today;
+    }
+  }
 
   private handleRFQ(msg: Record<string, unknown>): void {
     try {
       const parsed = this.parseRFQ(msg);
       if (!parsed) return;
 
+      this.checkDayRollover();
       this.totalSeen++;
       const now = Date.now();
 
