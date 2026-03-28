@@ -107,12 +107,57 @@ app.get('/api/rfqs', (_req, res) => {
         FROM rfqs_seen
         WHERE received_at >= ? AND received_at <= ? AND has_player_props = 0
         ORDER BY rowid DESC
-        LIMIT 100
+        LIMIT 500
       `).all(start, end);
     });
     res.json(data);
   } catch (err) {
     logger.error('Dashboard /api/rfqs error', { error: String(err) });
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// ── API: Liquidity breakdown (all qualified RFQs, no limit) ──
+app.get('/api/liquidity-breakdown', (_req, res) => {
+  try {
+    const data = cached('liq-breakdown', 5000, () => {
+      const db = getDb();
+      const { start, end } = pstDateRange();
+      const rows = db.prepare(`
+        SELECT leg_prices_snapshot, target_cost_dollars
+        FROM rfqs_seen
+        WHERE received_at >= ? AND received_at <= ? AND has_player_props = 0
+      `).all(start, end) as Array<{ leg_prices_snapshot: string | null; target_cost_dollars: number | null }>;
+
+      let thickCount = 0, thinCount = 0, noPriceCount = 0;
+      let thickBudget = 0, thinBudget = 0;
+
+      for (const r of rows) {
+        const cost = Number(r.target_cost_dollars) || 0;
+        if (!r.leg_prices_snapshot) {
+          noPriceCount++;
+          continue;
+        }
+        let snap: Record<string, number>;
+        try {
+          snap = typeof r.leg_prices_snapshot === 'string' ? JSON.parse(r.leg_prices_snapshot) : r.leg_prices_snapshot;
+        } catch { noPriceCount++; continue; }
+
+        const hasPrices = Object.keys(snap).some(k => !k.startsWith('__'));
+        if (!hasPrices) { noPriceCount++; continue; }
+
+        if ((snap['__thin__'] || 0) > 0) {
+          thinCount++; thinBudget += cost;
+        } else {
+          thickCount++; thickBudget += cost;
+        }
+      }
+
+      return { thickCount, thinCount, noPriceCount, thickBudget, thinBudget, total: rows.length };
+    });
+    res.json(data);
+  } catch (err) {
+    logger.error('Dashboard /api/liquidity-breakdown error', { error: String(err) });
     res.status(500).json({ error: 'Internal server error' });
   }
 });

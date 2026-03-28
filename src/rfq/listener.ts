@@ -277,7 +277,7 @@ export class RFQListener extends EventEmitter {
   private static extractProbFromOrderbook(
     ob: { yes_dollars?: [string, string][]; no_dollars?: [string, string][] }
   ): { price: number; thin: boolean } | null {
-    // Try NO side first
+    // Try NO side first — walk depth until $100K, use marginal price
     if (ob.no_dollars && ob.no_dollars.length > 0) {
       let cumNotional = 0;
       for (const [priceDollars, countFp] of ob.no_dollars) {
@@ -410,7 +410,8 @@ export class RFQListener extends EventEmitter {
       logger.info('Priced RFQ', { rfqId, legs: legs.length, prices: Object.fromEntries(Object.entries(priceSnapshot).filter(([k]) => !k.startsWith('__'))) });
     }
 
-    // Store thin tickers in snapshot so dashboard can display liquidity status
+    // Store metadata in snapshot for dashboard display
+    priceSnapshot['__captured_at__'] = now;
     if (thinTickers.length > 0) {
       priceSnapshot['__thin__'] = thinTickers.length;
       for (const t of thinTickers) {

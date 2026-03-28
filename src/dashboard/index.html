@@ -1239,26 +1239,21 @@
 
   async function updateQualifiedStats() {
     try {
-      const data = await fetchJSON('/api/qualified-today');
-      document.getElementById('qualCount').textContent = (data.count || 0).toLocaleString();
-      const budget = data.budget_dollars || 0;
+      const [qualData, liqData] = await Promise.all([
+        fetchJSON('/api/qualified-today'),
+        fetchJSON('/api/liquidity-breakdown'),
+      ]);
+      document.getElementById('qualCount').textContent = (qualData.count || 0).toLocaleString();
+      const budget = qualData.budget_dollars || 0;
       document.getElementById('qualBudget').textContent = '$' + budget.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
-      // Compute thin/thick breakdown from cached RFQs
-      let thickCount = 0, thinCount = 0, noPriceCount = 0;
-      let thickBudget = 0, thinBudget = 0;
-      for (const r of cachedRfqs) {
-        const liq = classifyLiquidity(r);
-        const cost = Number(r.target_cost_dollars) || 0;
-        if (liq === 'thick') { thickCount++; thickBudget += cost; }
-        else if (liq === 'thin') { thinCount++; thinBudget += cost; }
-        else { noPriceCount++; }
-      }
-      document.getElementById('qualThickCount').textContent = thickCount.toLocaleString();
-      document.getElementById('qualThickBudget').textContent = '$' + thickBudget.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-      document.getElementById('qualThinCount').textContent = thinCount.toLocaleString();
-      document.getElementById('qualThinBudget').textContent = '$' + thinBudget.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-      document.getElementById('qualNoPriceCount').textContent = noPriceCount.toLocaleString();
+      // Liquidity breakdown from dedicated endpoint (all RFQs, no limit)
+      const fmt = (v) => '$' + (v || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+      document.getElementById('qualThickCount').textContent = (liqData.thickCount || 0).toLocaleString();
+      document.getElementById('qualThickBudget').textContent = fmt(liqData.thickBudget);
+      document.getElementById('qualThinCount').textContent = (liqData.thinCount || 0).toLocaleString();
+      document.getElementById('qualThinBudget').textContent = fmt(liqData.thinBudget);
+      document.getElementById('qualNoPriceCount').textContent = (liqData.noPriceCount || 0).toLocaleString();
     } catch (err) {
       console.error('Failed to fetch qualified stats:', err);
     }
