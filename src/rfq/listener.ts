@@ -326,10 +326,15 @@ export class RFQListener extends EventEmitter {
 
         try {
           this.lastApiCall = Date.now();
-          const resp = await getOrderbook(leg.market_ticker);
+          // Strip KX prefix — combo leg tickers use KX prefix (e.g. KXMLBGAME-...)
+          // but the orderbook lives on the underlying market (MLBGAME-...)
+          const obTicker = leg.market_ticker.startsWith('KX')
+            ? leg.market_ticker.slice(2)
+            : leg.market_ticker;
+          const resp = await getOrderbook(obTicker);
           const ob = resp?.orderbook;
           if (!ob || !ob.no) {
-            logger.warn('No orderbook data', { ticker: leg.market_ticker });
+            logger.warn('No orderbook data', { ticker: obTicker, original: leg.market_ticker });
           } else {
             const result = RFQListener.findNoLiquidityPrice(ob.no as Array<{ price: number; quantity: number }>);
             if (result !== null) {
