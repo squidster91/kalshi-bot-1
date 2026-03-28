@@ -669,6 +669,111 @@ app.get('/api/debug-prices', (_req, res) => {
   }
 });
 
+// ── API: Live orderbook debug — fetch real-time orderbook and show calculations ──
+app.get('/api/debug-orderbook', async (req, res) => {
+  const ticker = req.query.ticker as string;
+  if (!ticker) return res.status(400).json({ error: 'ticker query param required' });
+
+  try {
+    const { getOrderbook, getMarket } = await import('../api/rest');
+    const THRESHOLD = 100_000;
+
+    // Fetch both in parallel
+    const [obResp, mktResp] = await Promise.allSettled([
+      getOrderbook(ticker),
+      getMarket(ticker),
+    ]);
+
+    const result: Record<string, unknown> = { ticker, threshold: THRESHOLD };
+
+    // Market data
+    if (mktResp.status === 'fulfilled') {
+      const m = mktResp.value.market;
+      result.market = {
+        yes_bid: m.yes_bid_dollars,
+        yes_ask: m.yes_ask_dollars,
+        no_bid: m.no_bid_dollars,
+        no_ask: m.no_ask_dollars,
+        last_price: m.last_price_dollars,
+        title: m.title,
+        status: m.status,
+      };
+      const yb = parseFloat(m.yes_bid_dollars) || 0;
+      const ya = parseFloat(m.yes_ask_dollars) || 0;
+      if (yb > 0 && ya > 0) result.kalshi_yes_mid = ((yb + ya) / 2 * 100).toFixed(2) + '%';
+    } else {
+      result.market_error = String(mktResp.reason);
+    }
+
+    // Orderbook data
+    if (obResp.status === 'fulfilled') {
+      const ob = obResp.value.orderbook_fp;
+      const noSide = ob?.no_dollars || [];
+      const yesSide = ob?.yes_dollars || [];
+
+      // NO side analysis
+      const noLevels: Array<{ price: string; count: string; cumNotional: number; crossed: boolean }> = [];
+      let cumNotional = 0;
+      let noDepthPrice: number | null = null;
+      let noCrossedLevel = -1;
+      for (let i = 0; i < noSide.length; i++) {
+        const price = parseFloat(noSide[i][0]);
+        const count = parseFloat(noSide[i][1]);
+        if (isNaN(price) || isNaN(count)) continue;
+        cumNotional += count * price;
+        const crossed = noCrossedLevel === -1 && cumNotional >= THRESHOLD;
+        if (crossed) { noCrossedLevel = i; noDepthPrice = price; }
+        noLevels.push({ price: noSide[i][0], count: noSide[i][1], cumNotional: Math.round(cumNotional), crossed });
+      }
+
+      // YES side analysis
+      const yesLevels: Array<{ price: string; count: string; cumNotional: number }> = [];
+      let yesCumNotional = 0;
+      for (let i = 0; i < yesSide.length; i++) {
+        const price = parseFloat(yesSide[i][0]);
+        const count = parseFloat(yesSide[i][1]);
+        if (isNaN(price) || isNaN(count)) continue;
+        yesCumNotional += count * price;
+        yesLevels.push({ price: yesSide[i][0], count: yesSide[i][1], cumNotional: Math.round(yesCumNotional) });
+      }
+
+      const bestNoPrice = noSide.length > 0 ? parseFloat(noSide[0][0]) : null;
+      const bestYesPrice = yesSide.length > 0 ? parseFloat(yesSide[0][0]) : null;
+
+      result.orderbook = {
+        no_levels_count: noSide.length,
+        yes_levels_count: yesSide.length,
+        no_levels: noLevels.slice(0, 20),
+        yes_levels: yesLevels.slice(0, 10),
+        best_no_price: bestNoPrice,
+        best_yes_price: bestYesPrice,
+        best_no_implied_yes: bestNoPrice !== null ? ((1 - bestNoPrice) * 100).toFixed(2) + '%' : null,
+        depth_no_price: noDepthPrice,
+        depth_no_implied_yes: noDepthPrice !== null ? ((1 - noDepthPrice) * 100).toFixed(2) + '%' : null,
+        depth_crossed_at_level: noCrossedLevel,
+        no_total_notional: Math.round(cumNotional),
+        yes_total_notional: Math.round(yesCumNotional),
+        is_thick: noCrossedLevel >= 0,
+      };
+
+      // What our bot computes
+      result.bot_calculation = {
+        price: noDepthPrice !== null
+          ? ((1 - noDepthPrice) * 100).toFixed(2) + '%'
+          : (bestNoPrice !== null ? ((1 - bestNoPrice) * 100).toFixed(2) + '%' : 'null'),
+        thin: noCrossedLevel === -1,
+        source: noDepthPrice !== null ? `NO side depth (level ${noCrossedLevel})` : (bestNoPrice !== null ? 'NO side best level (thin)' : 'null'),
+      };
+    } else {
+      result.orderbook_error = String(obResp.reason);
+    }
+
+    res.json(result);
+  } catch (err) {
+    res.status(500).json({ error: String(err) });
+  }
+});
+
 export function startDashboard(): void {
   app.listen(PORT, () => {
     logger.info(`Dashboard server running at http://localhost:${PORT}`);
