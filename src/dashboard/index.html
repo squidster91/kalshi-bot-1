@@ -898,7 +898,10 @@
         }
         if (fairValue === 1) fairValue = null; // no prices matched
       }
-      const fvStr = fairValue !== null ? '$' + fairValue.toFixed(4) : '--';
+      const hasThin = prices['__thin__'] > 0;
+      const fvStr = fairValue !== null
+        ? '$' + fairValue.toFixed(4) + (hasThin ? ' <span style="color:var(--accent-orange);font-size:9px" title="One or more legs have thin liquidity (<$100K)">~</span>' : '')
+        : '--';
 
       // All RFQs in this view are team-only (player props filtered server-side)
 
@@ -933,10 +936,13 @@
                 const prob = side === 'no' ? (1 - mid) : mid;
                 const pct = (prob * 100).toFixed(1);
                 const midCents = Math.round(mid * 100);
+                const isThin = prices['__thin_' + ticker] === 1;
                 const probColor = prob > 0.5 ? 'var(--accent-green)' : prob > 0.3 ? 'var(--accent-yellow)' : 'var(--accent-red)';
+                const thinLabel = isThin ? ' <span style="color:var(--accent-orange);font-weight:600" title="Less than $100K liquidity on NO side">THIN</span>' : '';
                 oddsStr = '<span style="font-size:10px;margin-left:6px">' +
                   '<span style="color:var(--text-muted)">' + midCents + '¢</span> ' +
-                  '<span style="color:' + probColor + ';font-weight:500">' + pct + '%</span></span>';
+                  '<span style="color:' + probColor + ';font-weight:500">' + pct + '%</span>' +
+                  thinLabel + '</span>';
               }
               return `<div class="leg-item">
                 <span class="${sideClass}" style="width:30px">${(side || '?').toUpperCase()}</span>

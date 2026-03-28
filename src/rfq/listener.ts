@@ -258,8 +258,8 @@ export class RFQListener extends EventEmitter {
     };
   }
 
-  // Price cache: ticker -> { mid, ts }. Avoids hammering API for same ticker.
-  private priceCache: Map<string, { mid: number; ts: number }> = new Map();
+  // Price cache: ticker -> { mid, thin, ts }. Avoids hammering API for same ticker.
+  private priceCache: Map<string, { mid: number; thin: boolean; ts: number }> = new Map();
   private static CACHE_TTL_MS = 5 * 60_000; // 5 minutes
   private rateLimited = false;
   private rateLimitedUntil = 0;
@@ -276,7 +276,7 @@ export class RFQListener extends EventEmitter {
    * Walk NO levels until cumulative liquidity (quantity * price_cents) >= $100K threshold.
    * Returns the price at that level as a probability (0-1), or null if not enough liquidity.
    */
-  private static findNoLiquidityPrice(noLevels: Array<{ price: number; quantity: number }>): number | null {
+  private static findNoLiquidityPrice(noLevels: Array<{ price: number; quantity: number }>): { price: number; thin: boolean } | null {
     if (!noLevels || noLevels.length === 0) return null;
 
     let cumulativeDollars = 0;
@@ -289,13 +289,13 @@ export class RFQListener extends EventEmitter {
       if (cumulativeDollars >= RFQListener.LIQUIDITY_THRESHOLD) {
         // NO price in cents → YES implied probability = (100 - no_price) / 100
         const yesImplied = (100 - level.price) / 100;
-        return yesImplied;
+        return { price: yesImplied, thin: false };
       }
     }
 
-    // Not enough liquidity — use best NO if available
+    // Not enough liquidity — use best NO if available but mark as thin
     if (noLevels.length > 0) {
-      return (100 - noLevels[0].price) / 100;
+      return { price: (100 - noLevels[0].price) / 100, thin: true };
     }
     return null;
   }
@@ -303,15 +303,18 @@ export class RFQListener extends EventEmitter {
   private async captureLegPrices(rfqId: string, legs: MVELeg[]): Promise<void> {
     const legPrices: Array<{ ticker: string; side: string; midPrice: number | null }> = [];
     const priceSnapshot: Record<string, number> = {};
+    const thinTickers: string[] = [];
     const now = Date.now();
 
     for (const leg of legs) {
       let price: number | null = null;
+      let thin = false;
 
       // Check cache first
       const cached = this.priceCache.get(leg.market_ticker);
       if (cached && (now - cached.ts) < RFQListener.CACHE_TTL_MS) {
         price = cached.mid;
+        thin = cached.thin;
       }
 
       // Fetch orderbook for real liquidity-weighted price
@@ -325,11 +328,15 @@ export class RFQListener extends EventEmitter {
           this.lastApiCall = Date.now();
           const resp = await getOrderbook(leg.market_ticker);
           const ob = resp.orderbook;
-          price = RFQListener.findNoLiquidityPrice(ob.no as Array<{ price: number; quantity: number }>);
-
-          if (price !== null) {
-            this.priceCache.set(leg.market_ticker, { mid: price, ts: Date.now() });
+          const result = RFQListener.findNoLiquidityPrice(ob.no as Array<{ price: number; quantity: number }>);
+          if (result !== null) {
+            price = result.price;
+            thin = result.thin;
+            logger.info('Orderbook fetched', { ticker: leg.market_ticker, noLevels: (ob.no || []).length, price: price.toFixed(4), thin });
+            this.priceCache.set(leg.market_ticker, { mid: price, thin, ts: Date.now() });
             try { upsertPriceCache(leg.market_ticker, price); } catch { /* ok */ }
+          } else {
+            logger.warn('Empty orderbook', { ticker: leg.market_ticker });
           }
         } catch (err) {
           const errMsg = String(err);
@@ -338,14 +345,26 @@ export class RFQListener extends EventEmitter {
             this.rateLimitedUntil = Date.now() + 60_000;
             logger.warn('Rate limited on orderbook fetch, backing off 60s');
           } else {
-            logger.debug('Failed to fetch orderbook', { ticker: leg.market_ticker, error: errMsg });
+            logger.warn('Failed to fetch orderbook', { ticker: leg.market_ticker, error: errMsg });
           }
         }
       }
 
+      if (price === null) {
+        logger.warn('No price for leg', { rfqId, ticker: leg.market_ticker, rateLimited: this.rateLimited });
+      }
+      if (thin) thinTickers.push(leg.market_ticker);
       legPrices.push({ ticker: leg.market_ticker, side: leg.side, midPrice: price });
       if (price !== null) {
         priceSnapshot[leg.market_ticker] = price;
+      }
+    }
+
+    // Store thin tickers in snapshot so dashboard can display liquidity status
+    if (thinTickers.length > 0) {
+      priceSnapshot['__thin__'] = thinTickers.length;
+      for (const t of thinTickers) {
+        priceSnapshot['__thin_' + t] = 1;
       }
     }
 

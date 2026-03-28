@@ -357,16 +357,16 @@ export function getDailyQualified(date?: string): { qualified_count: number; qua
 
 // ── Price Cache ──
 
-export function loadPriceCache(): Map<string, { mid: number; ts: number }> {
+export function loadPriceCache(): Map<string, { mid: number; thin: boolean; ts: number }> {
   const db = getDb();
   const rows = db.prepare(`SELECT ticker, mid_price, updated_at FROM price_cache`).all() as Array<{
     ticker: string;
     mid_price: number;
     updated_at: string;
   }>;
-  const cache = new Map<string, { mid: number; ts: number }>();
+  const cache = new Map<string, { mid: number; thin: boolean; ts: number }>();
   for (const row of rows) {
-    cache.set(row.ticker, { mid: row.mid_price, ts: new Date(row.updated_at).getTime() });
+    cache.set(row.ticker, { mid: row.mid_price, thin: false, ts: new Date(row.updated_at).getTime() });
   }
   return cache;
 }
