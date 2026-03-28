@@ -12,6 +12,16 @@ const PORT = 3000;
 
 const serverStartTime = Date.now();
 
+// ── Response caching to reduce SQLite load ──
+const cache = new Map<string, { data: unknown; ts: number }>();
+function cached<T>(key: string, ttlMs: number, fn: () => T): T {
+  const entry = cache.get(key);
+  if (entry && Date.now() - entry.ts < ttlMs) return entry.data as T;
+  const data = fn();
+  cache.set(key, { data, ts: Date.now() });
+  return data;
+}
+
 // Filter stats provider — set by index.ts to expose listener stats
 type FilterStats = { totalSeen: number; botFiltered: number; playerFiltered: number; knownBots: number };
 let filterStatsProvider: (() => FilterStats) | null = null;
@@ -29,6 +39,7 @@ app.get('/', (_req, res) => {
 // ── API: Today's stats ──
 app.get('/api/stats', (_req, res) => {
   try {
+    const data = cached('stats', 3000, () => {
     const stats = getTodayStats();
     const pnl = getTodayPnL();
 
@@ -45,7 +56,7 @@ app.get('/api/stats', (_req, res) => {
       balance = config.risk.startingBankroll;
     }
 
-    res.json({
+    return {
       rfqs_seen: stats.rfqs_seen,
       quotes_submitted: stats.quotes_submitted,
       quotes_filled: stats.quotes_filled,
@@ -61,7 +72,9 @@ app.get('/api/stats', (_req, res) => {
         total_exposure: getRiskUtilization().totalExposureUtilization,
         warnings: getRiskUtilization().warnings,
       },
-    });
+    };
+    }); // end cached
+    res.json(data);
   } catch (err) {
     logger.error('Dashboard /api/stats error', { error: String(err) });
     res.status(500).json({ error: 'Internal server error' });
@@ -71,19 +84,21 @@ app.get('/api/stats', (_req, res) => {
 // ── API: Recent RFQs (lightweight) ──
 app.get('/api/rfqs', (_req, res) => {
   try {
-    const db = getDb();
-    const today = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Los_Angeles' });
-    const rfqs = db.prepare(`
-      SELECT id, market_ticker, event_ticker, legs_json, contracts_requested,
-             target_cost_dollars, received_at, quoted, quote_id,
-             quote_price_yes, quote_price_no, computed_fair_value,
-             num_legs, is_same_game, leg_prices_snapshot, has_player_props
-      FROM rfqs_seen
-      WHERE received_at LIKE ? || '%' AND has_player_props = 0
-      ORDER BY rowid DESC
-      LIMIT 100
-    `).all(today);
-    res.json(rfqs);
+    const data = cached('rfqs', 3000, () => {
+      const db = getDb();
+      const today = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Los_Angeles' });
+      return db.prepare(`
+        SELECT id, market_ticker, event_ticker, legs_json, contracts_requested,
+               target_cost_dollars, received_at, quoted, quote_id,
+               quote_price_yes, quote_price_no, computed_fair_value,
+               num_legs, is_same_game, leg_prices_snapshot, has_player_props
+        FROM rfqs_seen
+        WHERE received_at LIKE ? || '%' AND has_player_props = 0
+        ORDER BY rowid DESC
+        LIMIT 100
+      `).all(today);
+    });
+    res.json(data);
   } catch (err) {
     logger.error('Dashboard /api/rfqs error', { error: String(err) });
     res.status(500).json({ error: 'Internal server error' });
@@ -212,37 +227,33 @@ app.get('/api/positions', (_req, res) => {
 // ── API: RFQ volume per hour (last 24h) ──
 app.get('/api/rfq-volume', (_req, res) => {
   try {
-    const db = getDb();
-    const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+    const data = cached('rfq-volume', 10000, () => {
+      const db = getDb();
+      const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+      const rows = db.prepare(`
+        SELECT
+          strftime('%Y-%m-%dT%H:00:00', received_at) as hour,
+          COUNT(*) as count
+        FROM rfqs_seen
+        WHERE received_at >= ?
+        GROUP BY strftime('%Y-%m-%dT%H:00:00', received_at)
+        ORDER BY hour ASC
+      `).all(since) as Array<{ hour: string; count: number }>;
 
-    const rows = db.prepare(`
-      SELECT
-        strftime('%Y-%m-%dT%H:00:00', received_at) as hour,
-        COUNT(*) as count
-      FROM rfqs_seen
-      WHERE received_at >= ?
-      GROUP BY strftime('%Y-%m-%dT%H:00:00', received_at)
-      ORDER BY hour ASC
-    `).all(since) as Array<{ hour: string; count: number }>;
-
-    // Fill in missing hours with zero
-    const result: Array<{ hour: string; label: string; count: number }> = [];
-    const now = new Date();
-    for (let i = 23; i >= 0; i--) {
-      const d = new Date(now);
-      d.setMinutes(0, 0, 0);
-      d.setHours(d.getHours() - i);
-      const hourKey = d.toISOString().slice(0, 13) + ':00:00';
-      const label = d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false, timeZone: 'America/Los_Angeles' });
-      const match = rows.find(r => r.hour === hourKey);
-      result.push({
-        hour: hourKey,
-        label,
-        count: match ? match.count : 0,
-      });
-    }
-
-    res.json(result);
+      const result: Array<{ hour: string; label: string; count: number }> = [];
+      const now = new Date();
+      for (let i = 23; i >= 0; i--) {
+        const d = new Date(now);
+        d.setMinutes(0, 0, 0);
+        d.setHours(d.getHours() - i);
+        const hourKey = d.toISOString().slice(0, 13) + ':00:00';
+        const label = d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false, timeZone: 'America/Los_Angeles' });
+        const match = rows.find(r => r.hour === hourKey);
+        result.push({ hour: hourKey, label, count: match ? match.count : 0 });
+      }
+      return result;
+    });
+    res.json(data);
   } catch (err) {
     logger.error('Dashboard /api/rfq-volume error', { error: String(err) });
     res.status(500).json({ error: 'Internal server error' });
@@ -252,6 +263,7 @@ app.get('/api/rfq-volume', (_req, res) => {
 // ── API: RFQ categories breakdown ──
 app.get('/api/rfq-categories', (_req, res) => {
   try {
+    const data = cached('rfq-categories', 10000, () => {
     const db = getDb();
     const today = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Los_Angeles' });
 
@@ -297,14 +309,16 @@ app.get('/api/rfq-categories', (_req, res) => {
 
     const teamOnly = total - hasPlayers;
 
-    res.json({
+    return {
       categories,
       avg_legs: teamOnly > 0 ? totalLegs / total : 0,
       total_rfqs: total,
       team_only: teamOnly,
       has_players: hasPlayers,
       known_bots: knownBots,
-    });
+    };
+    }); // end cached
+    res.json(data);
   } catch (err) {
     logger.error('Dashboard /api/rfq-categories error', { error: String(err) });
     res.status(500).json({ error: 'Internal server error' });
@@ -314,52 +328,49 @@ app.get('/api/rfq-categories', (_req, res) => {
 // ── API: Budget distribution (post bot-filter) ──
 app.get('/api/budget-distribution', (_req, res) => {
   try {
-    const db = getDb();
-    const today = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Los_Angeles' });
+    const data = cached('budget-dist', 10000, () => {
+      const db = getDb();
+      const today = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Los_Angeles' });
+      const rows = db.prepare(`
+        SELECT
+          CASE
+            WHEN CAST(target_cost_dollars AS REAL) = 0 THEN 'No Budget'
+            WHEN CAST(target_cost_dollars AS REAL) <= 1 THEN '$0-1'
+            WHEN CAST(target_cost_dollars AS REAL) <= 5 THEN '$1-5'
+            WHEN CAST(target_cost_dollars AS REAL) < 10 THEN '$5-9.99'
+            WHEN CAST(target_cost_dollars AS REAL) = 10 THEN '$10 exact'
+            WHEN CAST(target_cost_dollars AS REAL) <= 25 THEN '$10-25'
+            WHEN CAST(target_cost_dollars AS REAL) <= 50 THEN '$25-50'
+            WHEN CAST(target_cost_dollars AS REAL) <= 100 THEN '$50-100'
+            WHEN CAST(target_cost_dollars AS REAL) <= 500 THEN '$100-500'
+            ELSE '$500+'
+          END as bucket,
+          COUNT(*) as count
+        FROM rfqs_seen
+        WHERE received_at LIKE ? || '%' AND has_player_props = 0
+        GROUP BY bucket
+        ORDER BY MIN(CAST(target_cost_dollars AS REAL))
+      `).all(today) as Array<{ bucket: string; count: number }>;
 
-    // Get distribution of target costs, excluding player props (has_player_props=0)
-    const rows = db.prepare(`
-      SELECT
-        CASE
-          WHEN CAST(target_cost_dollars AS REAL) = 0 THEN 'No Budget'
-          WHEN CAST(target_cost_dollars AS REAL) <= 1 THEN '$0-1'
-          WHEN CAST(target_cost_dollars AS REAL) <= 5 THEN '$1-5'
-          WHEN CAST(target_cost_dollars AS REAL) < 10 THEN '$5-9.99'
-          WHEN CAST(target_cost_dollars AS REAL) = 10 THEN '$10 exact'
-          WHEN CAST(target_cost_dollars AS REAL) <= 25 THEN '$10-25'
-          WHEN CAST(target_cost_dollars AS REAL) <= 50 THEN '$25-50'
-          WHEN CAST(target_cost_dollars AS REAL) <= 100 THEN '$50-100'
-          WHEN CAST(target_cost_dollars AS REAL) <= 500 THEN '$100-500'
-          ELSE '$500+'
-        END as bucket,
-        COUNT(*) as count,
-        SUM(CASE WHEN CAST(target_cost_dollars AS REAL) = 10 AND (contracts_requested = '0' OR contracts_requested IS NULL OR contracts_requested = '') THEN 1 ELSE 0 END) as exact_10_no_contracts
-      FROM rfqs_seen
-      WHERE received_at LIKE ? || '%'
-        AND has_player_props = 0
-      GROUP BY bucket
-      ORDER BY MIN(CAST(target_cost_dollars AS REAL))
-    `).all(today) as Array<{ bucket: string; count: number; exact_10_no_contracts: number }>;
+      const exact10 = db.prepare(`
+        SELECT COUNT(*) as count FROM rfqs_seen
+        WHERE received_at LIKE ? || '%' AND has_player_props = 0
+          AND CAST(target_cost_dollars AS REAL) = 10
+          AND (contracts_requested = '0' OR contracts_requested IS NULL OR contracts_requested = '')
+      `).get(today) as { count: number } | undefined;
 
-    // Also get exact $10 + 0 contracts count
-    const exact10 = db.prepare(`
-      SELECT COUNT(*) as count FROM rfqs_seen
-      WHERE received_at LIKE ? || '%'
-        AND has_player_props = 0
-        AND CAST(target_cost_dollars AS REAL) = 10
-        AND (contracts_requested = '0' OR contracts_requested IS NULL OR contracts_requested = '')
-    `).get(today) as { count: number } | undefined;
+      const totalTeam = db.prepare(`
+        SELECT COUNT(*) as count FROM rfqs_seen
+        WHERE received_at LIKE ? || '%' AND has_player_props = 0
+      `).get(today) as { count: number } | undefined;
 
-    const totalTeam = db.prepare(`
-      SELECT COUNT(*) as count FROM rfqs_seen
-      WHERE received_at LIKE ? || '%' AND has_player_props = 0
-    `).get(today) as { count: number } | undefined;
-
-    res.json({
-      buckets: rows.map(r => ({ label: r.bucket, count: r.count })),
-      exact_10_budget_mode: exact10?.count || 0,
-      total_team_only: totalTeam?.count || 0,
+      return {
+        buckets: rows.map(r => ({ label: r.bucket, count: r.count })),
+        exact_10_budget_mode: exact10?.count || 0,
+        total_team_only: totalTeam?.count || 0,
+      };
     });
+    res.json(data);
   } catch (err) {
     logger.error('Dashboard /api/budget-distribution error', { error: String(err) });
     res.status(500).json({ error: 'Internal server error' });
@@ -530,16 +541,19 @@ app.get('/api/qualified-today', (_req, res) => {
 // ── API: Legs distribution (team-only, post high-freq bot filter) ──
 app.get('/api/legs-distribution', (_req, res) => {
   try {
-    const db = getDb();
-    const today = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Los_Angeles' });
-    const rows = db.prepare(`
-      SELECT num_legs, COUNT(*) as count
-      FROM rfqs_seen
-      WHERE received_at LIKE ? || '%' AND has_player_props = 0
-      GROUP BY num_legs
-      ORDER BY num_legs
-    `).all(today) as Array<{ num_legs: number; count: number }>;
-    res.json(rows.filter(r => r.num_legs > 0));
+    const data = cached('legs-dist', 10000, () => {
+      const db = getDb();
+      const today = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Los_Angeles' });
+      const rows = db.prepare(`
+        SELECT num_legs, COUNT(*) as count
+        FROM rfqs_seen
+        WHERE received_at LIKE ? || '%' AND has_player_props = 0
+        GROUP BY num_legs
+        ORDER BY num_legs
+      `).all(today) as Array<{ num_legs: number; count: number }>;
+      return rows.filter(r => r.num_legs > 0);
+    });
+    res.json(data);
   } catch (err) {
     logger.error('Dashboard /api/legs-distribution error', { error: String(err) });
     res.status(500).json({ error: 'Internal server error' });
