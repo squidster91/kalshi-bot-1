@@ -228,6 +228,20 @@ function initSchema(db: Database.Database): void {
   } catch (err) {
     logger.warn('Purge migration failed', { error: String(err) });
   }
+
+  // Auto-purge: delete RFQ data older than 24 hours on every startup
+  try {
+    const cutoff = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+    db.pragma('foreign_keys = OFF');
+    const legsDel = db.prepare(`DELETE FROM rfq_leg_prices WHERE rfq_id IN (SELECT id FROM rfqs_seen WHERE received_at < ?)`).run(cutoff);
+    const rfqDel = db.prepare(`DELETE FROM rfqs_seen WHERE received_at < ?`).run(cutoff);
+    db.pragma('foreign_keys = ON');
+    if (rfqDel.changes > 0) {
+      logger.info('Auto-purge: removed old RFQ data', { rfqs: rfqDel.changes, legs: legsDel.changes });
+    }
+  } catch (err) {
+    logger.warn('Auto-purge failed', { error: String(err) });
+  }
 }
 
 export function closeDb(): void {

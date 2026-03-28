@@ -22,6 +22,13 @@ function cached<T>(key: string, ttlMs: number, fn: () => T): T {
   return data;
 }
 
+// PST date range for efficient index-based queries (no LIKE)
+function pstDateRange(): { start: string; end: string } {
+  const now = new Date();
+  const pstDate = now.toLocaleDateString('en-CA', { timeZone: 'America/Los_Angeles' });
+  return { start: pstDate + 'T00:00:00', end: pstDate + 'T99:99:99' };
+}
+
 // Filter stats provider — set by index.ts to expose listener stats
 type FilterStats = { totalSeen: number; botFiltered: number; playerFiltered: number; knownBots: number };
 let filterStatsProvider: (() => FilterStats) | null = null;
@@ -86,17 +93,17 @@ app.get('/api/rfqs', (_req, res) => {
   try {
     const data = cached('rfqs', 3000, () => {
       const db = getDb();
-      const today = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Los_Angeles' });
+      const { start, end } = pstDateRange();
       return db.prepare(`
         SELECT id, market_ticker, event_ticker, legs_json, contracts_requested,
                target_cost_dollars, received_at, quoted, quote_id,
                quote_price_yes, quote_price_no, computed_fair_value,
                num_legs, is_same_game, leg_prices_snapshot, has_player_props
         FROM rfqs_seen
-        WHERE received_at LIKE ? || '%' AND has_player_props = 0
+        WHERE received_at >= ? AND received_at <= ? AND has_player_props = 0
         ORDER BY rowid DESC
         LIMIT 100
-      `).all(today);
+      `).all(start, end);
     });
     res.json(data);
   } catch (err) {
@@ -265,7 +272,7 @@ app.get('/api/rfq-categories', (_req, res) => {
   try {
     const data = cached('rfq-categories', 10000, () => {
     const db = getDb();
-    const today = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Los_Angeles' });
+    const { start, end } = pstDateRange();
 
     // Single efficient aggregate query
     const aggRow = db.prepare(`
@@ -279,8 +286,8 @@ app.get('/api/rfq-categories', (_req, res) => {
              SUM(CASE WHEN market_ticker LIKE '%NHL%' AND market_ticker NOT LIKE 'KXMVE%' AND market_ticker NOT LIKE '%CROSS%' THEN 1 ELSE 0 END) as nhl_multi,
              SUM(CASE WHEN market_ticker LIKE '%NCAAB%' OR market_ticker LIKE '%CBB%' THEN 1 ELSE 0 END) as ncaab_multi,
              SUM(CASE WHEN market_ticker LIKE '%NCAAF%' OR market_ticker LIKE '%CFB%' THEN 1 ELSE 0 END) as ncaaf_multi
-      FROM rfqs_seen WHERE received_at LIKE ? || '%'
-    `).get(today) as Record<string, number> | undefined;
+      FROM rfqs_seen WHERE received_at >= ? AND received_at <= ?
+    `).get(start, end) as Record<string, number> | undefined;
 
     const total = aggRow?.total || 0;
     const totalLegs = aggRow?.total_legs || 0;
@@ -330,7 +337,7 @@ app.get('/api/budget-distribution', (_req, res) => {
   try {
     const data = cached('budget-dist', 10000, () => {
       const db = getDb();
-      const today = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Los_Angeles' });
+      const { start, end } = pstDateRange();
       const rows = db.prepare(`
         SELECT
           CASE
@@ -347,22 +354,22 @@ app.get('/api/budget-distribution', (_req, res) => {
           END as bucket,
           COUNT(*) as count
         FROM rfqs_seen
-        WHERE received_at LIKE ? || '%' AND has_player_props = 0
+        WHERE received_at >= ? AND received_at <= ? AND has_player_props = 0
         GROUP BY bucket
         ORDER BY MIN(CAST(target_cost_dollars AS REAL))
-      `).all(today) as Array<{ bucket: string; count: number }>;
+      `).all(start, end) as Array<{ bucket: string; count: number }>;
 
       const exact10 = db.prepare(`
         SELECT COUNT(*) as count FROM rfqs_seen
-        WHERE received_at LIKE ? || '%' AND has_player_props = 0
+        WHERE received_at >= ? AND received_at <= ? AND has_player_props = 0
           AND CAST(target_cost_dollars AS REAL) = 10
           AND (contracts_requested = '0' OR contracts_requested IS NULL OR contracts_requested = '')
-      `).get(today) as { count: number } | undefined;
+      `).get(start, end) as { count: number } | undefined;
 
       const totalTeam = db.prepare(`
         SELECT COUNT(*) as count FROM rfqs_seen
-        WHERE received_at LIKE ? || '%' AND has_player_props = 0
-      `).get(today) as { count: number } | undefined;
+        WHERE received_at >= ? AND received_at <= ? AND has_player_props = 0
+      `).get(start, end) as { count: number } | undefined;
 
       return {
         buckets: rows.map(r => ({ label: r.bucket, count: r.count })),
@@ -543,14 +550,14 @@ app.get('/api/legs-distribution', (_req, res) => {
   try {
     const data = cached('legs-dist', 10000, () => {
       const db = getDb();
-      const today = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Los_Angeles' });
+      const { start, end } = pstDateRange();
       const rows = db.prepare(`
         SELECT num_legs, COUNT(*) as count
         FROM rfqs_seen
-        WHERE received_at LIKE ? || '%' AND has_player_props = 0
+        WHERE received_at >= ? AND received_at <= ? AND has_player_props = 0
         GROUP BY num_legs
         ORDER BY num_legs
-      `).all(today) as Array<{ num_legs: number; count: number }>;
+      `).all(start, end) as Array<{ num_legs: number; count: number }>;
       return rows.filter(r => r.num_legs > 0);
     });
     res.json(data);
