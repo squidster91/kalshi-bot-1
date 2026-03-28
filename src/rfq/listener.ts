@@ -346,32 +346,6 @@ export class RFQListener extends EventEmitter {
   private singleEventCache: Map<string, { tickers: string[]; ts: number }> = new Map();
 
   private async captureLegPrices(rfqId: string, legs: MVELeg[]): Promise<void> {
-    // One-time diagnostic: log full API responses for the first leg ticker
-    if (!this.loggedDiag && legs.length > 0) {
-      this.loggedDiag = true;
-      const t = legs[0].market_ticker;
-      try {
-        const [mktResp, obResp] = await Promise.all([
-          getMarket(t).catch(e => ({ error: String(e).slice(0, 200) })),
-          getOrderbook(t).catch(e => ({ error: String(e).slice(0, 200) })),
-        ]);
-        logger.info('DIAG: API responses for leg ticker', { ticker: t, market: JSON.stringify(mktResp).slice(0, 400), orderbook: JSON.stringify(obResp).slice(0, 400) });
-      } catch { /* ok */ }
-
-      // Also try mve_filter=exclude to find single-event markets
-      try {
-        const resp = await getMarkets({ event_ticker: legs[0].event_ticker, mve_filter: 'exclude', status: 'open', limit: '10' });
-        logger.info('DIAG: mve_filter=exclude results', {
-          event_ticker: legs[0].event_ticker,
-          count: resp?.markets?.length ?? 0,
-          tickers: (resp?.markets || []).map(m => m.ticker).slice(0, 5),
-          sample: resp?.markets?.[0] ? { ticker: resp.markets[0].ticker, yes_bid: resp.markets[0].yes_bid, yes_ask: resp.markets[0].yes_ask, last_price: resp.markets[0].last_price } : null,
-        });
-      } catch (err) {
-        logger.info('DIAG: mve_filter=exclude failed', { error: String(err).slice(0, 200) });
-      }
-    }
-
     // Log raw leg data for the first RFQ
     if (!this.loggedFirstRfq) {
       this.loggedFirstRfq = true;
@@ -397,27 +371,14 @@ export class RFQListener extends EventEmitter {
 
       // Fetch price from API if not cached
       if (price === null && !(this.rateLimited && Date.now() < this.rateLimitedUntil)) {
-        // Strategy 1: getOrderbook on the leg ticker directly
-        price = await this.tryOrderbook(leg.market_ticker);
-        if (price !== null) { thin = false; }
+        // Strategy 1: getMarket (single API call, returns yes_bid/ask/no_bid/ask/last_price)
+        const mktResult = await this.tryGetMarket(leg.market_ticker);
+        if (mktResult !== null) { price = mktResult; thin = true; }
 
-        // Strategy 2: getMarket on the leg ticker (check all price fields)
+        // Strategy 2: getOrderbook (more granular depth data, but costs another API call)
         if (price === null) {
-          const mktResult = await this.tryGetMarket(leg.market_ticker);
-          if (mktResult !== null) { price = mktResult; thin = true; }
-        }
-
-        // Strategy 3: Find single-event markets via mve_filter=exclude
-        if (price === null) {
-          const realTicker = await this.findSingleEventTicker(leg);
-          if (realTicker && realTicker !== leg.market_ticker) {
-            price = await this.tryOrderbook(realTicker);
-            if (price !== null) { thin = false; }
-            if (price === null) {
-              const mktResult = await this.tryGetMarket(realTicker);
-              if (mktResult !== null) { price = mktResult; thin = true; }
-            }
-          }
+          const obResult = await this.tryOrderbook(leg.market_ticker);
+          if (obResult !== null) { price = obResult; thin = false; }
         }
 
         // Cache the result
@@ -482,6 +443,7 @@ export class RFQListener extends EventEmitter {
   }
 
   /** Try getMarket for a ticker, return YES probability or null */
+  private loggedFirstMarketResult = false;
   private async tryGetMarket(ticker: string): Promise<number | null> {
     if (this.rateLimited && Date.now() < this.rateLimitedUntil) return null;
     try {
@@ -489,6 +451,15 @@ export class RFQListener extends EventEmitter {
       const mktResp = await getMarket(ticker);
       const m = mktResp?.market;
       if (!m) return null;
+      // Log first successful market response to see all price fields
+      if (!this.loggedFirstMarketResult) {
+        this.loggedFirstMarketResult = true;
+        logger.info('DIAG: First getMarket result', {
+          ticker, yes_bid: m.yes_bid, yes_ask: m.yes_ask,
+          no_bid: m.no_bid, no_ask: m.no_ask, last_price: m.last_price,
+          status: m.status,
+        });
+      }
       return RFQListener.extractProbFromMarket(m);
     } catch (err) {
       this.handleApiError(err);
