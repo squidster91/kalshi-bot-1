@@ -133,6 +133,7 @@ export async function getMarkets(params: {
   series_ticker?: string;
   cursor?: string;
   limit?: string;
+  mve_filter?: string;
 }): Promise<{ markets: Market[]; cursor: string }> {
   const queryParams: Record<string, string> = {};
   for (const [k, v] of Object.entries(params)) {

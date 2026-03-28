@@ -266,191 +266,116 @@ export class RFQListener extends EventEmitter {
   private lastApiCall = 0;
   private static MIN_API_INTERVAL_MS = 200; // Max ~5 API calls/sec
 
-  // Map combo leg ticker -> real underlying market ticker (discovered via getMarkets)
-  private tickerMap: Map<string, string> = new Map();
-  // Cache event_ticker -> list of real market tickers (to avoid re-fetching)
-  private eventMarketsCache: Map<string, { tickers: string[]; ts: number }> = new Map();
-
-  // Track which tickers we've already subscribed to via WS
-  private subscribedTickers = new Set<string>();
-
-  private static LIQUIDITY_THRESHOLD = 100_000; // $100K in cents = 10,000,000 cents... actually quantity * price
+  private static LIQUIDITY_THRESHOLD = 100_000; // $100K notional
 
   /**
-   * Resolve a combo leg's KX-prefixed market_ticker to the real underlying market ticker.
-   * Uses the leg's event_ticker to discover actual markets via getMarkets API.
+   * Extract YES implied probability from orderbook levels.
+   * For NO levels: walk until $100K cumulative liquidity, implied prob = (100 - no_price) / 100
+   * For YES levels: walk until $100K cumulative liquidity, implied prob = yes_price / 100
    */
-  private async resolveRealTicker(leg: MVELeg): Promise<string | null> {
-    // Check cached mapping first
-    const cached = this.tickerMap.get(leg.market_ticker);
-    if (cached) return cached;
-
-    // Use the leg's event_ticker to find real markets for this event
-    // Leg event_ticker is also KX-prefixed (combo), strip it to get the real underlying event
-    const rawEventTicker = leg.event_ticker;
-    if (!rawEventTicker) {
-      logger.warn('Leg has no event_ticker', { market_ticker: leg.market_ticker, legData: JSON.stringify(leg).slice(0, 300) });
-      return null;
-    }
-    const eventTicker = rawEventTicker.startsWith('KX') ? rawEventTicker.slice(2) : rawEventTicker;
-
-    let realTickers: string[] = [];
-    const eventCached = this.eventMarketsCache.get(eventTicker);
-    if (eventCached && (Date.now() - eventCached.ts) < 10 * 60_000) {
-      realTickers = eventCached.tickers;
-    } else {
-      try {
-        const timeSinceLastCall = Date.now() - this.lastApiCall;
-        if (timeSinceLastCall < RFQListener.MIN_API_INTERVAL_MS) {
-          await new Promise(r => setTimeout(r, RFQListener.MIN_API_INTERVAL_MS - timeSinceLastCall));
+  private static extractProbFromOrderbook(
+    ob: { yes?: Array<{ price: number; quantity: number }>; no?: Array<{ price: number; quantity: number }> }
+  ): { price: number; thin: boolean } | null {
+    // Try NO side first (more standard for implied YES probability)
+    if (ob.no && ob.no.length > 0) {
+      let cumDollars = 0;
+      for (const level of ob.no) {
+        cumDollars += level.quantity * (level.price / 100);
+        if (cumDollars >= RFQListener.LIQUIDITY_THRESHOLD) {
+          return { price: (100 - level.price) / 100, thin: false };
         }
-        this.lastApiCall = Date.now();
-        const resp = await getMarkets({ event_ticker: eventTicker, status: 'open', limit: '50' });
-        realTickers = (resp?.markets || []).map(m => m.ticker);
-        this.eventMarketsCache.set(eventTicker, { tickers: realTickers, ts: Date.now() });
-        if (realTickers.length > 0) {
-          logger.info('Discovered real markets for event', { rawEventTicker, eventTicker, count: realTickers.length, sample: realTickers.slice(0, 3) });
-        }
-      } catch (err) {
-        const errMsg = String(err);
-        if (errMsg.includes('429')) {
-          this.rateLimited = true;
-          this.rateLimitedUntil = Date.now() + 60_000;
-        }
-        logger.warn('Failed to discover markets for event', { eventTicker, error: errMsg });
-        return null;
       }
+      // Thin — use best NO level
+      return { price: (100 - ob.no[0].price) / 100, thin: true };
     }
 
-    if (realTickers.length === 0) {
-      logger.warn('No markets found for event', { eventTicker, market_ticker: leg.market_ticker });
-      return null;
-    }
-
-    // Match: strip KX from combo ticker and find a real ticker that shares the same suffix
-    // e.g. KXMLBGAME-26MAR281507ATHTOR-TOR → find real ticker ending in -TOR
-    const comboStripped = leg.market_ticker.startsWith('KX') ? leg.market_ticker.slice(2) : leg.market_ticker;
-    const lastDash = comboStripped.lastIndexOf('-');
-    const suffix = lastDash >= 0 ? comboStripped.slice(lastDash) : '';
-
-    // Try exact match first (stripping KX)
-    let match = realTickers.find(t => t === comboStripped);
-
-    // Try suffix match (same outcome team)
-    if (!match && suffix) {
-      match = realTickers.find(t => t.endsWith(suffix));
-    }
-
-    // Try substring containment
-    if (!match) {
-      match = realTickers.find(t => comboStripped.includes(t) || t.includes(comboStripped));
-    }
-
-    // Last resort: if only one market for this event, use it
-    if (!match && realTickers.length === 1) {
-      match = realTickers[0];
-    }
-
-    if (match) {
-      this.tickerMap.set(leg.market_ticker, match);
-      if (match !== comboStripped) {
-        logger.info('Ticker resolved', { combo: leg.market_ticker, real: match });
+    // Try YES side as fallback
+    if (ob.yes && ob.yes.length > 0) {
+      let cumDollars = 0;
+      for (const level of ob.yes) {
+        cumDollars += level.quantity * (level.price / 100);
+        if (cumDollars >= RFQListener.LIQUIDITY_THRESHOLD) {
+          return { price: level.price / 100, thin: false };
+        }
       }
-      return match;
+      return { price: ob.yes[0].price / 100, thin: true };
     }
 
-    logger.warn('Could not match ticker', { combo: leg.market_ticker, stripped: comboStripped, suffix, available: realTickers });
     return null;
   }
 
   /**
-   * Find the implied probability from the NO side of the orderbook.
-   * Walk NO levels until cumulative liquidity (quantity * price_cents) >= $100K threshold.
-   * Returns the price at that level as a probability (0-1), or null if not enough liquidity.
+   * Extract YES implied probability from a Market object.
+   * Checks all available price fields: yes_bid, yes_ask (midpoint), no_bid, no_ask, last_price.
    */
-  private static findNoLiquidityPrice(noLevels: Array<{ price: number; quantity: number }>): { price: number; thin: boolean } | null {
-    if (!noLevels || noLevels.length === 0) return null;
-
-    let cumulativeDollars = 0;
-    for (const level of noLevels) {
-      // level.price is in cents (e.g., 45 = $0.45), quantity is number of contracts
-      // Dollar liquidity at this level = quantity * (price / 100)
-      const dollarLiquidity = level.quantity * (level.price / 100);
-      cumulativeDollars += dollarLiquidity;
-
-      if (cumulativeDollars >= RFQListener.LIQUIDITY_THRESHOLD) {
-        // NO price in cents → YES implied probability = (100 - no_price) / 100
-        const yesImplied = (100 - level.price) / 100;
-        return { price: yesImplied, thin: false };
-      }
+  private static extractProbFromMarket(m: {
+    yes_bid: number; yes_ask: number; no_bid: number; no_ask: number; last_price: number;
+  }): number | null {
+    // Best: midpoint of yes_bid/yes_ask
+    if (m.yes_bid > 0 && m.yes_ask > 0) {
+      return ((m.yes_bid + m.yes_ask) / 2) / 100;
     }
-
-    // Not enough liquidity — use best NO if available but mark as thin
-    if (noLevels.length > 0) {
-      return { price: (100 - noLevels[0].price) / 100, thin: true };
+    // yes_ask alone (what you'd pay for YES)
+    if (m.yes_ask > 0 && m.yes_ask < 100) {
+      return m.yes_ask / 100;
+    }
+    // yes_bid alone
+    if (m.yes_bid > 0) {
+      return m.yes_bid / 100;
+    }
+    // Derive from NO side: prob(YES) = 1 - no_price/100
+    if (m.no_bid > 0 && m.no_ask > 0) {
+      return 1 - ((m.no_bid + m.no_ask) / 2) / 100;
+    }
+    if (m.no_ask > 0 && m.no_ask < 100) {
+      return 1 - m.no_ask / 100;
+    }
+    if (m.no_bid > 0) {
+      return 1 - m.no_bid / 100;
+    }
+    // Last resort: last trade price
+    if (m.last_price > 0) {
+      return m.last_price / 100;
     }
     return null;
   }
 
   private loggedFirstRfq = false;
-  private loggedFirstPrice = false;
-  private loggedTickerErrors = false;
-  private discoveredRealFormat = false;
+  private loggedDiag = false;
+  // Cache: event_ticker -> list of single-event market tickers (via mve_filter=exclude)
+  private singleEventCache: Map<string, { tickers: string[]; ts: number }> = new Map();
 
   private async captureLegPrices(rfqId: string, legs: MVELeg[]): Promise<void> {
-    // One-time: discover real MLB market ticker format and KX market data
-    if (!this.discoveredRealFormat && legs.length > 0) {
-      this.discoveredRealFormat = true;
-      const firstLeg = legs[0];
-
-      // 1. Log full getMarket response for the KX ticker (we know it doesn't 404)
+    // One-time diagnostic: log full API responses for the first leg ticker
+    if (!this.loggedDiag && legs.length > 0) {
+      this.loggedDiag = true;
+      const t = legs[0].market_ticker;
       try {
-        const mktResp = await getMarket(firstLeg.market_ticker);
-        logger.info('DIAG: Full KX market response', {
-          ticker: firstLeg.market_ticker,
-          market: JSON.stringify(mktResp).slice(0, 500),
+        const [mktResp, obResp] = await Promise.all([
+          getMarket(t).catch(e => ({ error: String(e).slice(0, 200) })),
+          getOrderbook(t).catch(e => ({ error: String(e).slice(0, 200) })),
+        ]);
+        logger.info('DIAG: API responses for leg ticker', { ticker: t, market: JSON.stringify(mktResp).slice(0, 400), orderbook: JSON.stringify(obResp).slice(0, 400) });
+      } catch { /* ok */ }
+
+      // Also try mve_filter=exclude to find single-event markets
+      try {
+        const resp = await getMarkets({ event_ticker: legs[0].event_ticker, mve_filter: 'exclude', status: 'open', limit: '10' });
+        logger.info('DIAG: mve_filter=exclude results', {
+          event_ticker: legs[0].event_ticker,
+          count: resp?.markets?.length ?? 0,
+          tickers: (resp?.markets || []).map(m => m.ticker).slice(0, 5),
+          sample: resp?.markets?.[0] ? { ticker: resp.markets[0].ticker, yes_bid: resp.markets[0].yes_bid, yes_ask: resp.markets[0].yes_ask, last_price: resp.markets[0].last_price } : null,
         });
       } catch (err) {
-        logger.info('DIAG: KX getMarket failed', { ticker: firstLeg.market_ticker, error: String(err).slice(0, 200) });
-      }
-
-      // 2. Log full getOrderbook response for the KX ticker
-      try {
-        const obResp = await getOrderbook(firstLeg.market_ticker);
-        logger.info('DIAG: Full KX orderbook response', {
-          ticker: firstLeg.market_ticker,
-          orderbook: JSON.stringify(obResp).slice(0, 500),
-        });
-      } catch (err) {
-        logger.info('DIAG: KX getOrderbook failed', { ticker: firstLeg.market_ticker, error: String(err).slice(0, 200) });
-      }
-
-      // 3. Try different series tickers to find real MLB markets
-      for (const series of ['MLB', 'KXMLBGAME', 'MLB-GAME', 'MLBWIN']) {
-        try {
-          const resp = await getMarkets({ series_ticker: series, status: 'open', limit: '3' });
-          const mkts = resp?.markets || [];
-          if (mkts.length > 0) {
-            logger.info('DIAG: Found markets with series', {
-              series,
-              count: mkts.length,
-              tickers: mkts.map(m => m.ticker),
-              events: mkts.map(m => m.event_ticker),
-            });
-            break;
-          }
-        } catch { /* try next */ }
+        logger.info('DIAG: mve_filter=exclude failed', { error: String(err).slice(0, 200) });
       }
     }
 
-    // Log raw leg data for the first RFQ to diagnose field availability
+    // Log raw leg data for the first RFQ
     if (!this.loggedFirstRfq) {
       this.loggedFirstRfq = true;
-      logger.info('DIAG: First RFQ raw legs', {
-        rfqId,
-        legCount: legs.length,
-        legs: legs.map(l => JSON.stringify(l).slice(0, 200)),
-      });
+      logger.info('DIAG: First RFQ raw legs', { rfqId, legCount: legs.length, legs: legs.map(l => JSON.stringify(l).slice(0, 200)) });
     }
 
     const legPrices: Array<{ ticker: string; side: string; midPrice: number | null }> = [];
@@ -463,7 +388,7 @@ export class RFQListener extends EventEmitter {
       let price: number | null = null;
       let thin = false;
 
-      // Check cache first (keyed by original KX ticker)
+      // Check cache first
       const cached = this.priceCache.get(leg.market_ticker);
       if (cached && (now - cached.ts) < RFQListener.CACHE_TTL_MS) {
         price = cached.mid;
@@ -471,82 +396,31 @@ export class RFQListener extends EventEmitter {
       }
 
       // Fetch price from API if not cached
-      if (price === null && !(this.rateLimited && now < this.rateLimitedUntil)) {
-        // Try multiple ticker formats: original KX ticker first, then KX-stripped
-        const tickersToTry = [leg.market_ticker];
-        if (leg.market_ticker.startsWith('KX')) {
-          tickersToTry.push(leg.market_ticker.slice(2));
+      if (price === null && !(this.rateLimited && Date.now() < this.rateLimitedUntil)) {
+        // Strategy 1: getOrderbook on the leg ticker directly
+        price = await this.tryOrderbook(leg.market_ticker);
+        if (price !== null) { thin = false; }
+
+        // Strategy 2: getMarket on the leg ticker (check all price fields)
+        if (price === null) {
+          const mktResult = await this.tryGetMarket(leg.market_ticker);
+          if (mktResult !== null) { price = mktResult; thin = true; }
         }
 
-        for (const tryTicker of tickersToTry) {
-          if (price !== null) break;
-          if (this.rateLimited && Date.now() < this.rateLimitedUntil) break;
-
-          // Try getMarket first (simpler, more reliable)
-          try {
-            const timeSinceLastCall = Date.now() - this.lastApiCall;
-            if (timeSinceLastCall < RFQListener.MIN_API_INTERVAL_MS) {
-              await new Promise(r => setTimeout(r, RFQListener.MIN_API_INTERVAL_MS - timeSinceLastCall));
-            }
-            this.lastApiCall = Date.now();
-            const mktResp = await getMarket(tryTicker);
-            const m = mktResp?.market;
-            if (m) {
-              const bid = m.yes_bid > 0 ? m.yes_bid : m.last_price;
-              if (bid > 0) {
-                price = bid / 100;
-                thin = true;
-                if (!this.loggedFirstPrice) {
-                  this.loggedFirstPrice = true;
-                  logger.info('DIAG: First price via getMarket', { tryTicker, yes_bid: m.yes_bid, no_bid: m.no_bid, last_price: m.last_price, price });
-                }
-              }
-            }
-          } catch (err) {
-            const errMsg = String(err);
-            if (errMsg.includes('429')) {
-              this.rateLimited = true;
-              this.rateLimitedUntil = Date.now() + 60_000;
-            }
-            // Log first few failures to diagnose which ticker format works
-            if (!this.loggedTickerErrors) {
-              this.loggedTickerErrors = true;
-              logger.info('DIAG: getMarket error', { tryTicker, error: errMsg.slice(0, 200) });
-            }
-          }
-
-          if (price !== null) break;
-
-          // Try orderbook (NO-side $100K liquidity depth)
-          try {
-            const timeSinceLastCall = Date.now() - this.lastApiCall;
-            if (timeSinceLastCall < RFQListener.MIN_API_INTERVAL_MS) {
-              await new Promise(r => setTimeout(r, RFQListener.MIN_API_INTERVAL_MS - timeSinceLastCall));
-            }
-            this.lastApiCall = Date.now();
-            const resp = await getOrderbook(tryTicker);
-            const ob = resp?.orderbook;
-            if (ob && Array.isArray(ob.no) && ob.no.length > 0) {
-              const result = RFQListener.findNoLiquidityPrice(ob.no as Array<{ price: number; quantity: number }>);
-              if (result !== null) {
-                price = result.price;
-                thin = result.thin;
-                if (!this.loggedFirstPrice) {
-                  this.loggedFirstPrice = true;
-                  logger.info('DIAG: First price via orderbook', { tryTicker, price, thin });
-                }
-              }
-            }
-          } catch (err) {
-            const errMsg = String(err);
-            if (errMsg.includes('429')) {
-              this.rateLimited = true;
-              this.rateLimitedUntil = Date.now() + 60_000;
+        // Strategy 3: Find single-event markets via mve_filter=exclude
+        if (price === null) {
+          const realTicker = await this.findSingleEventTicker(leg);
+          if (realTicker && realTicker !== leg.market_ticker) {
+            price = await this.tryOrderbook(realTicker);
+            if (price !== null) { thin = false; }
+            if (price === null) {
+              const mktResult = await this.tryGetMarket(realTicker);
+              if (mktResult !== null) { price = mktResult; thin = true; }
             }
           }
         }
 
-        // Cache the result (even null to avoid re-fetching)
+        // Cache the result
         if (price !== null) {
           this.priceCache.set(leg.market_ticker, { mid: price, thin, ts: Date.now() });
           try { upsertPriceCache(leg.market_ticker, price); } catch { /* ok */ }
@@ -588,6 +462,96 @@ export class RFQListener extends EventEmitter {
           this.priceCache.delete(k);
         }
       }
+    }
+  }
+
+  /** Try getOrderbook for a ticker, return YES probability or null */
+  private async tryOrderbook(ticker: string): Promise<number | null> {
+    if (this.rateLimited && Date.now() < this.rateLimitedUntil) return null;
+    try {
+      await this.rateDelay();
+      const resp = await getOrderbook(ticker);
+      const ob = resp?.orderbook;
+      if (!ob) return null;
+      const result = RFQListener.extractProbFromOrderbook(ob as { yes?: Array<{ price: number; quantity: number }>; no?: Array<{ price: number; quantity: number }> });
+      return result?.price ?? null;
+    } catch (err) {
+      this.handleApiError(err);
+      return null;
+    }
+  }
+
+  /** Try getMarket for a ticker, return YES probability or null */
+  private async tryGetMarket(ticker: string): Promise<number | null> {
+    if (this.rateLimited && Date.now() < this.rateLimitedUntil) return null;
+    try {
+      await this.rateDelay();
+      const mktResp = await getMarket(ticker);
+      const m = mktResp?.market;
+      if (!m) return null;
+      return RFQListener.extractProbFromMarket(m);
+    } catch (err) {
+      this.handleApiError(err);
+      return null;
+    }
+  }
+
+  /** Find the single-event market ticker for a combo leg using mve_filter=exclude */
+  private async findSingleEventTicker(leg: MVELeg): Promise<string | null> {
+    if (this.rateLimited && Date.now() < this.rateLimitedUntil) return null;
+    const eventTicker = leg.event_ticker;
+    if (!eventTicker) return null;
+
+    const cached = this.singleEventCache.get(eventTicker);
+    if (cached && (Date.now() - cached.ts) < 10 * 60_000) {
+      return this.matchTicker(leg.market_ticker, cached.tickers);
+    }
+
+    try {
+      await this.rateDelay();
+      const resp = await getMarkets({ event_ticker: eventTicker, mve_filter: 'exclude', status: 'open', limit: '50' });
+      const tickers = (resp?.markets || []).map(m => m.ticker);
+      this.singleEventCache.set(eventTicker, { tickers, ts: Date.now() });
+      if (tickers.length > 0) {
+        logger.info('Found single-event markets', { eventTicker, count: tickers.length, sample: tickers.slice(0, 3) });
+      }
+      return this.matchTicker(leg.market_ticker, tickers);
+    } catch (err) {
+      this.handleApiError(err);
+      return null;
+    }
+  }
+
+  /** Match a combo leg ticker to a single-event ticker by suffix */
+  private matchTicker(comboTicker: string, realTickers: string[]): string | null {
+    if (realTickers.length === 0) return null;
+    // Exact match
+    let match = realTickers.find(t => t === comboTicker);
+    // Suffix match (e.g., both end in -CHC)
+    if (!match) {
+      const lastDash = comboTicker.lastIndexOf('-');
+      const suffix = lastDash >= 0 ? comboTicker.slice(lastDash) : '';
+      if (suffix) match = realTickers.find(t => t.endsWith(suffix));
+    }
+    // Single market for event
+    if (!match && realTickers.length === 1) match = realTickers[0];
+    return match ?? null;
+  }
+
+  private async rateDelay(): Promise<void> {
+    const elapsed = Date.now() - this.lastApiCall;
+    if (elapsed < RFQListener.MIN_API_INTERVAL_MS) {
+      await new Promise(r => setTimeout(r, RFQListener.MIN_API_INTERVAL_MS - elapsed));
+    }
+    this.lastApiCall = Date.now();
+  }
+
+  private handleApiError(err: unknown): void {
+    const errMsg = String(err);
+    if (errMsg.includes('429')) {
+      this.rateLimited = true;
+      this.rateLimitedUntil = Date.now() + 60_000;
+      logger.warn('Rate limited, backing off 60s');
     }
   }
 
