@@ -517,6 +517,12 @@
       <select class="filter-select" id="catFilter" onchange="applyFilters()">
         <option value="all">All</option>
       </select>
+      <label style="margin-left:8px">Liquidity:</label>
+      <select class="filter-select" id="liqFilter" onchange="applyFilters()">
+        <option value="all">All</option>
+        <option value="thick">Thick Only</option>
+        <option value="thin">Thin Only</option>
+      </select>
       <span id="filterCount" style="margin-left:auto;font-size:11px;color:var(--text-muted)"></span>
     </div>
     <div class="rfq-table-wrap">
@@ -564,6 +570,21 @@
         <div class="summary-cell">
           <span class="stat-label" title="% of all RFQs removed by filters (HFT bots + player props + non-MLB). Uses real-time filter stats from the listener.">Filtered Out</span>
           <span class="stat-value" id="sumFilteredPct" style="color:var(--accent-red);font-size:14px">--</span>
+        </div>
+      </div>
+      <div style="border-top:1px solid var(--border);margin-top:4px;padding:8px 16px 4px">
+        <div style="font-size:10px;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:6px">Liquidity Breakdown</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px;font-size:11px">
+          <span style="color:var(--accent-green)">Thick ($100K+)</span>
+          <span id="qualThickCount" class="mono" style="text-align:right;color:var(--accent-green)">--</span>
+          <span style="color:var(--text-muted);font-size:10px;padding-left:8px">Budget</span>
+          <span id="qualThickBudget" class="mono" style="text-align:right;color:var(--text-secondary);font-size:10px">--</span>
+          <span style="color:var(--accent-orange)">Thin (&lt;$100K)</span>
+          <span id="qualThinCount" class="mono" style="text-align:right;color:var(--accent-orange)">--</span>
+          <span style="color:var(--text-muted);font-size:10px;padding-left:8px">Budget</span>
+          <span id="qualThinBudget" class="mono" style="text-align:right;color:var(--text-secondary);font-size:10px">--</span>
+          <span style="color:var(--text-muted)">No Price</span>
+          <span id="qualNoPriceCount" class="mono" style="text-align:right;color:var(--text-muted)">--</span>
         </div>
       </div>
     </div>
@@ -768,16 +789,107 @@
     catch { return {}; }
   }
 
+  // ── MLB Team Names ──
+  const MLB_TEAMS = {
+    ARI: 'D-backs', AZ: 'D-backs', ATL: 'Braves', BAL: 'Orioles', BOS: 'Red Sox',
+    CHC: 'Cubs', CHW: 'White Sox', CWS: 'White Sox', CIN: 'Reds', CLE: 'Guardians',
+    COL: 'Rockies', DET: 'Tigers', HOU: 'Astros', KC: 'Royals', LAA: 'Angels',
+    LAD: 'Dodgers', MIA: 'Marlins', MIL: 'Brewers', MIN: 'Twins', NYM: 'Mets',
+    NYY: 'Yankees', OAK: 'Athletics', PHI: 'Phillies', PIT: 'Pirates', SD: 'Padres',
+    SF: 'Giants', SEA: 'Mariners', STL: 'Cardinals', TB: 'Rays', TEX: 'Rangers',
+    TOR: 'Blue Jays', WSH: 'Nationals',
+    // NBA teams
+    ATL_NBA: 'Hawks', BKN: 'Nets', BOS_NBA: 'Celtics', CHA: 'Hornets', CHI: 'Bulls',
+    CLE_NBA: 'Cavaliers', DAL: 'Mavericks', DEN: 'Nuggets', DET_NBA: 'Pistons',
+    GS: 'Warriors', GSW: 'Warriors', HOU_NBA: 'Rockets', IND: 'Pacers', LAC: 'Clippers',
+    LAL: 'Lakers', MEM: 'Grizzlies', MIA_NBA: 'Heat', MIL_NBA: 'Bucks',
+    MIN_NBA: 'Timberwolves', NO: 'Pelicans', NOP: 'Pelicans', NY: 'Knicks', NYK: 'Knicks',
+    OKC: 'Thunder', ORL: 'Magic', PHI_NBA: '76ers', PHX: 'Suns', POR: 'Trail Blazers',
+    SAC: 'Kings', SA: 'Spurs', SAS: 'Spurs', TOR_NBA: 'Raptors', UTA: 'Jazz',
+    WAS: 'Wizards',
+  };
+
+  const MONTH_MAP = { JAN: 0, FEB: 1, MAR: 2, APR: 3, MAY: 4, JUN: 5, JUL: 6, AUG: 7, SEP: 8, OCT: 9, NOV: 10, DEC: 11 };
+
+  // Parse ticker like KXMLBGAME-26MAR281910LAAHOU-LAA
+  // Format: KX{SPORT}{TYPE}-{YY}{MMM}{DD}{HHMM}{AWAY}{HOME}-{BETTEAM}
+  function parseLegTicker(ticker, side) {
+    if (!ticker) return null;
+    const parts = ticker.split('-');
+    if (parts.length < 3) return null;
+
+    const prefix = parts[0]; // KXMLBGAME
+    const betTeam = parts[parts.length - 1]; // LAA
+    // Middle part(s) contain date+time+teams — rejoin in case there are extra dashes
+    const middle = parts.slice(1, -1).join('-');
+
+    // Extract date: first 7 chars = YYMMMDD, next 4 = HHMM
+    const dateMatch = middle.match(/^(\d{2})([A-Z]{3})(\d{2})(\d{4})/);
+    if (!dateMatch) return { betTeam, teamName: MLB_TEAMS[betTeam] || betTeam, side };
+
+    const [, yy, mmm, dd, hhmm] = dateMatch;
+    const year = 2000 + parseInt(yy);
+    const month = MONTH_MAP[mmm];
+    const day = parseInt(dd);
+    const hour = parseInt(hhmm.slice(0, 2));
+    const min = hhmm.slice(2);
+
+    // Format time as readable
+    const ampm = hour >= 12 ? 'PM' : 'AM';
+    const h12 = hour > 12 ? hour - 12 : (hour === 0 ? 12 : hour);
+    const timeStr = `${h12}:${min} ${ampm} ET`;
+
+    // Format date
+    const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+    const dateStr = `${months[month]} ${day}`;
+
+    // Parse teams from remainder after date+time
+    const teamsStr = middle.slice(dateMatch[0].length);
+    let awayCode = '', homeCode = '';
+
+    if (teamsStr.startsWith(betTeam)) {
+      awayCode = betTeam;
+      homeCode = teamsStr.slice(betTeam.length);
+    } else if (teamsStr.endsWith(betTeam)) {
+      homeCode = betTeam;
+      awayCode = teamsStr.slice(0, teamsStr.length - betTeam.length);
+    } else {
+      // Try to find betTeam somewhere
+      awayCode = teamsStr;
+      homeCode = betTeam;
+    }
+
+    const awayName = MLB_TEAMS[awayCode] || awayCode;
+    const homeName = MLB_TEAMS[homeCode] || homeCode;
+    const betName = MLB_TEAMS[betTeam] || betTeam;
+    const sideLabel = (side || '').toLowerCase() === 'yes' ? 'to win' : 'to lose';
+
+    return {
+      awayCode, homeCode, awayName, homeName, betTeam, betName,
+      dateStr, timeStr, sideLabel, side: (side || '').toUpperCase(),
+    };
+  }
+
   // ── Filtering ──
-  let activeFilters = { legs: 'all', cat: 'all' };
+  let activeFilters = { legs: 'all', cat: 'all', liq: 'all' };
   let cachedRfqs = [];
 
   function applyFilters() {
     activeFilters.legs = document.getElementById('legsFilter').value;
     activeFilters.cat = document.getElementById('catFilter').value;
+    activeFilters.liq = document.getElementById('liqFilter').value;
     renderRFQTable(cachedRfqs);
   }
   window.applyFilters = applyFilters;
+
+  // Classify RFQ liquidity: 'thick' | 'thin' | 'noPrice'
+  function classifyLiquidity(r) {
+    const prices = r.leg_prices_snapshot ? parsePrices(r.leg_prices_snapshot) : {};
+    const legs = parseLegs(r.legs_json);
+    const hasAnyPrice = legs.some(l => prices[l.market_ticker] != null);
+    if (!hasAnyPrice) return 'noPrice';
+    return (prices['__thin__'] > 0) ? 'thin' : 'thick';
+  }
 
   function filterRfqs(rfqs) {
     return rfqs.filter(r => {
@@ -795,6 +907,13 @@
 
       // Category filter
       if (activeFilters.cat !== 'all' && cat.label !== activeFilters.cat) return false;
+
+      // Liquidity filter
+      if (activeFilters.liq !== 'all') {
+        const liq = classifyLiquidity(r);
+        if (activeFilters.liq === 'thick' && liq !== 'thick') return false;
+        if (activeFilters.liq === 'thin' && liq !== 'thin') return false;
+      }
 
       return true;
     });
@@ -853,7 +972,7 @@
     const tbody = document.getElementById('rfqTableBody');
     const filterCountEl = document.getElementById('filterCount');
 
-    if (activeFilters.legs !== 'all' || activeFilters.cat !== 'all') {
+    if (activeFilters.legs !== 'all' || activeFilters.cat !== 'all' || activeFilters.liq !== 'all') {
       filterCountEl.textContent = `Showing ${filtered.length} of ${rfqs.length}`;
     } else {
       filterCountEl.textContent = '';
@@ -944,10 +1063,26 @@
                   '<span style="color:' + probColor + ';font-weight:500">' + pct + '%</span>' +
                   thinLabel + '</span>';
               }
-              return `<div class="leg-item">
-                <span class="${sideClass}" style="width:30px">${(side || '?').toUpperCase()}</span>
-                <span style="color:var(--text-primary)">${ticker}</span>
-                ${oddsStr}
+              // Parse game details from ticker
+              const game = parseLegTicker(ticker, side);
+              let gameDetail = '';
+              if (game && game.awayName && game.homeName) {
+                const betHighlight = side === 'yes'
+                  ? `<strong style="color:var(--accent-green)">${game.betName}</strong> to win`
+                  : `<strong style="color:var(--accent-red)">${game.betName}</strong> to lose`;
+                gameDetail = `<div style="font-size:10px;color:var(--text-muted);margin-left:38px;margin-top:1px">` +
+                  `${game.awayName} @ ${game.homeName}` +
+                  ` · <span style="color:var(--text-secondary)">${game.dateStr} ${game.timeStr}</span>` +
+                  ` · ${betHighlight}` +
+                  `</div>`;
+              }
+              return `<div class="leg-item" style="flex-direction:column;align-items:flex-start">
+                <div style="display:flex;align-items:center;gap:4px">
+                  <span class="${sideClass}" style="width:30px">${(side || '?').toUpperCase()}</span>
+                  <span style="color:var(--text-primary)">${ticker}</span>
+                  ${oddsStr}
+                </div>
+                ${gameDetail}
               </div>`;
             }).join('')}
           </td>
@@ -1108,6 +1243,22 @@
       document.getElementById('qualCount').textContent = (data.count || 0).toLocaleString();
       const budget = data.budget_dollars || 0;
       document.getElementById('qualBudget').textContent = '$' + budget.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+      // Compute thin/thick breakdown from cached RFQs
+      let thickCount = 0, thinCount = 0, noPriceCount = 0;
+      let thickBudget = 0, thinBudget = 0;
+      for (const r of cachedRfqs) {
+        const liq = classifyLiquidity(r);
+        const cost = Number(r.target_cost_dollars) || 0;
+        if (liq === 'thick') { thickCount++; thickBudget += cost; }
+        else if (liq === 'thin') { thinCount++; thinBudget += cost; }
+        else { noPriceCount++; }
+      }
+      document.getElementById('qualThickCount').textContent = thickCount.toLocaleString();
+      document.getElementById('qualThickBudget').textContent = '$' + thickBudget.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+      document.getElementById('qualThinCount').textContent = thinCount.toLocaleString();
+      document.getElementById('qualThinBudget').textContent = '$' + thinBudget.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+      document.getElementById('qualNoPriceCount').textContent = noPriceCount.toLocaleString();
     } catch (err) {
       console.error('Failed to fetch qualified stats:', err);
     }
