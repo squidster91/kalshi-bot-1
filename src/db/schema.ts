@@ -229,6 +229,25 @@ function initSchema(db: Database.Database): void {
     logger.warn('Purge migration failed', { error: String(err) });
   }
 
+  // One-time migration: purge all non-MLB-moneyline rfqs from before the filter was added
+  try {
+    const migKey = 'purge_non_mlb_v1';
+    const done = db.prepare(`SELECT key FROM migrations WHERE key = ?`).get(migKey);
+    if (!done) {
+      db.pragma('foreign_keys = OFF');
+      // Delete any RFQ where legs don't all match MLB game moneyline pattern
+      const delLegs = db.prepare(`DELETE FROM rfq_leg_prices WHERE rfq_id IN (
+        SELECT id FROM rfqs_seen WHERE legs_json NOT LIKE '%MLBGAME%' AND legs_json NOT LIKE '%MLB%GAME%'
+      )`).run();
+      const delRfqs = db.prepare(`DELETE FROM rfqs_seen WHERE legs_json NOT LIKE '%MLBGAME%' AND legs_json NOT LIKE '%MLB%GAME%'`).run();
+      db.pragma('foreign_keys = ON');
+      db.prepare(`INSERT INTO migrations (key, applied_at) VALUES (?, ?)`).run(migKey, new Date().toISOString());
+      logger.info('Migration: purged non-MLB rfqs', { rfqs: delRfqs.changes, legs: delLegs.changes });
+    }
+  } catch (err) {
+    logger.warn('Non-MLB purge migration failed', { error: String(err) });
+  }
+
   // Auto-purge: delete RFQ data older than 24 hours on every startup
   try {
     const cutoff = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
