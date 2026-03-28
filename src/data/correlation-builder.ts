@@ -51,6 +51,14 @@ export async function buildCorrelationMatrix(): Promise<void> {
       return;
     }
 
+    // Cap pairwise computation to avoid OOM on small VPS
+    // 500 tickers = 124,750 pairs which is manageable
+    const MAX_TICKERS = 500;
+    if (validTickers.length > MAX_TICKERS) {
+      logger.warn(`Too many tickers for correlation (${validTickers.length}), skipping pairwise computation — using defaults`);
+      return;
+    }
+
     let updatedCount = 0;
 
     // Compute pairwise correlations
