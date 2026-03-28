@@ -22,11 +22,16 @@ function cached<T>(key: string, ttlMs: number, fn: () => T): T {
   return data;
 }
 
-// PST date range for efficient index-based queries (no LIKE)
+// PST day range in UTC — received_at is stored as UTC ISO strings
 function pstDateRange(): { start: string; end: string } {
+  // Get PST midnight boundaries in UTC
   const now = new Date();
   const pstDate = now.toLocaleDateString('en-CA', { timeZone: 'America/Los_Angeles' });
-  return { start: pstDate + 'T00:00:00', end: pstDate + 'T99:99:99' };
+  // PST is UTC-7 (PDT is UTC-7), so PST midnight = 07:00 UTC
+  // Create date at PST midnight, convert to UTC ISO
+  const pstMidnight = new Date(pstDate + 'T00:00:00-07:00');
+  const pstEnd = new Date(pstMidnight.getTime() + 24 * 60 * 60 * 1000);
+  return { start: pstMidnight.toISOString(), end: pstEnd.toISOString() };
 }
 
 // Filter stats provider — set by index.ts to expose listener stats

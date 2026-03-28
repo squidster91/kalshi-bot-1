@@ -82,6 +82,7 @@ export class RFQListener extends EventEmitter {
   private static MLB_MONEYLINE_PATTERN = /MLB.*GAME|MLBGAME/i;
   private static MLB_NON_MONEYLINE = /SPREAD|TOTAL|OVER|UNDER/i;
   private nonMlbFiltered = 0;
+  private botMlbDropped = 0; // bots that would have been MLB moneyline
 
   // Counters for reporting (reset at PST midnight)
   private totalSeen = 0;
@@ -98,6 +99,7 @@ export class RFQListener extends EventEmitter {
       this.botFiltered = 0;
       this.playerFiltered = 0;
       this.nonMlbFiltered = 0;
+      this.botMlbDropped = 0;
       this.counterDate = today;
     }
   }
@@ -133,6 +135,18 @@ export class RFQListener extends EventEmitter {
 
         if (this.knownBots.has(creatorId)) {
           this.botFiltered++;
+          // Track if this bot RFQ would have been MLB moneyline
+          const wouldBeMlb = parsed.legs.every(l => {
+            const t = l.market_ticker || '';
+            return RFQListener.MLB_MONEYLINE_PATTERN.test(t) && !RFQListener.MLB_NON_MONEYLINE.test(t);
+          });
+          if (wouldBeMlb) {
+            this.botMlbDropped++;
+            logger.info('Bot RFQ was MLB moneyline — dropped', {
+              creatorId, id: parsed.id, legs: parsed.legs.length,
+              targetCost: parsed.targetCostDollars, botMlbTotal: this.botMlbDropped,
+            });
+          }
           this.reportFilterStats(now);
           return;
         }
@@ -379,6 +393,7 @@ export class RFQListener extends EventEmitter {
       botFiltered: this.botFiltered,
       playerFiltered: this.playerFiltered,
       nonMlbFiltered: this.nonMlbFiltered,
+      botMlbDropped: this.botMlbDropped,
       knownBots: this.knownBots.size,
     };
   }
