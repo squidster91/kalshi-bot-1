@@ -398,21 +398,48 @@ export class RFQListener extends EventEmitter {
   private discoveredRealFormat = false;
 
   private async captureLegPrices(rfqId: string, legs: MVELeg[]): Promise<void> {
-    // One-time: discover real MLB market ticker format from Kalshi
-    if (!this.discoveredRealFormat) {
+    // One-time: discover real MLB market ticker format and KX market data
+    if (!this.discoveredRealFormat && legs.length > 0) {
       this.discoveredRealFormat = true;
+      const firstLeg = legs[0];
+
+      // 1. Log full getMarket response for the KX ticker (we know it doesn't 404)
       try {
-        // Query open MLB game markets to see what real tickers look like
-        const resp = await getMarkets({ series_ticker: 'MLBGAME', status: 'open', limit: '10' });
-        const mkts = resp?.markets || [];
-        logger.info('DIAG: Real MLB market tickers from Kalshi', {
-          count: mkts.length,
-          tickers: mkts.map(m => m.ticker),
-          events: mkts.map(m => m.event_ticker),
-          sample: mkts.length > 0 ? { ticker: mkts[0].ticker, event_ticker: mkts[0].event_ticker, title: mkts[0].title, yes_bid: mkts[0].yes_bid, status: mkts[0].status } : null,
+        const mktResp = await getMarket(firstLeg.market_ticker);
+        logger.info('DIAG: Full KX market response', {
+          ticker: firstLeg.market_ticker,
+          market: JSON.stringify(mktResp).slice(0, 500),
         });
       } catch (err) {
-        logger.warn('DIAG: Failed to query real MLB markets', { error: String(err).slice(0, 200) });
+        logger.info('DIAG: KX getMarket failed', { ticker: firstLeg.market_ticker, error: String(err).slice(0, 200) });
+      }
+
+      // 2. Log full getOrderbook response for the KX ticker
+      try {
+        const obResp = await getOrderbook(firstLeg.market_ticker);
+        logger.info('DIAG: Full KX orderbook response', {
+          ticker: firstLeg.market_ticker,
+          orderbook: JSON.stringify(obResp).slice(0, 500),
+        });
+      } catch (err) {
+        logger.info('DIAG: KX getOrderbook failed', { ticker: firstLeg.market_ticker, error: String(err).slice(0, 200) });
+      }
+
+      // 3. Try different series tickers to find real MLB markets
+      for (const series of ['MLB', 'KXMLBGAME', 'MLB-GAME', 'MLBWIN']) {
+        try {
+          const resp = await getMarkets({ series_ticker: series, status: 'open', limit: '3' });
+          const mkts = resp?.markets || [];
+          if (mkts.length > 0) {
+            logger.info('DIAG: Found markets with series', {
+              series,
+              count: mkts.length,
+              tickers: mkts.map(m => m.ticker),
+              events: mkts.map(m => m.event_ticker),
+            });
+            break;
+          }
+        } catch { /* try next */ }
       }
     }
 
