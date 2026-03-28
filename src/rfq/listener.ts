@@ -327,16 +327,20 @@ export class RFQListener extends EventEmitter {
         try {
           this.lastApiCall = Date.now();
           const resp = await getOrderbook(leg.market_ticker);
-          const ob = resp.orderbook;
-          const result = RFQListener.findNoLiquidityPrice(ob.no as Array<{ price: number; quantity: number }>);
-          if (result !== null) {
-            price = result.price;
-            thin = result.thin;
-            logger.info('Orderbook fetched', { ticker: leg.market_ticker, noLevels: (ob.no || []).length, price: price.toFixed(4), thin });
-            this.priceCache.set(leg.market_ticker, { mid: price, thin, ts: Date.now() });
-            try { upsertPriceCache(leg.market_ticker, price); } catch { /* ok */ }
+          const ob = resp?.orderbook;
+          if (!ob || !ob.no) {
+            logger.warn('No orderbook data', { ticker: leg.market_ticker });
           } else {
-            logger.warn('Empty orderbook', { ticker: leg.market_ticker });
+            const result = RFQListener.findNoLiquidityPrice(ob.no as Array<{ price: number; quantity: number }>);
+            if (result !== null) {
+              price = result.price;
+              thin = result.thin;
+              logger.info('Orderbook fetched', { ticker: leg.market_ticker, noLevels: ob.no.length, price: price.toFixed(4), thin });
+              this.priceCache.set(leg.market_ticker, { mid: price, thin, ts: Date.now() });
+              try { upsertPriceCache(leg.market_ticker, price); } catch { /* ok */ }
+            } else {
+              logger.warn('Empty orderbook NO side', { ticker: leg.market_ticker });
+            }
           }
         } catch (err) {
           const errMsg = String(err);
