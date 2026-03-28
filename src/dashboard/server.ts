@@ -3,7 +3,7 @@ import path from 'path';
 import { getDb } from '../db/schema';
 import { config } from '../config';
 import { getPositionSummary } from '../risk/positions';
-import { getRiskUtilization, isKillSwitchActive } from '../risk/limits';
+import { getRiskUtilization, isKillSwitchActive, activateKillSwitch, deactivateKillSwitch } from '../risk/limits';
 import { getTodayPnL, getTodayStats, getRFQsWithOutcomes, getRFQLegPrices, getRFQOutcomeStats, getDailyQualified } from '../db/queries';
 import { logger } from '../logger';
 
@@ -213,6 +213,7 @@ app.get('/api/risk', (_req, res) => {
         max_exposure_per_event: config.risk.maxExposurePerEvent,
         max_total_exposure: config.risk.maxTotalExposure,
         starting_bankroll: config.risk.startingBankroll,
+        min_spread: config.risk.minSpread,
       },
     });
   } catch (err) {
@@ -579,6 +580,29 @@ app.get('/api/filter-stats', (_req, res) => {
     return;
   }
   res.json(filterStatsProvider());
+});
+
+// ── API: Trading Controls ──
+app.post('/api/controls/quoting', (_req, res) => {
+  (config.bot as { quotingEnabled: boolean }).quotingEnabled = !config.bot.quotingEnabled;
+  logger.info('Quoting toggled', { quotingEnabled: config.bot.quotingEnabled });
+  res.json({ quotingEnabled: config.bot.quotingEnabled });
+});
+
+app.post('/api/controls/mode', (_req, res) => {
+  (config.bot as { paperMode: boolean }).paperMode = !config.bot.paperMode;
+  logger.info('Mode toggled', { paperMode: config.bot.paperMode });
+  res.json({ paperMode: config.bot.paperMode });
+});
+
+app.post('/api/controls/kill-switch', (_req, res) => {
+  if (isKillSwitchActive()) {
+    deactivateKillSwitch();
+    res.json({ killSwitch: false });
+  } else {
+    activateKillSwitch('Manual activation via dashboard');
+    res.json({ killSwitch: true });
+  }
 });
 
 // ── API: Debug leg prices (temporary) ──

@@ -568,6 +568,72 @@
       </div>
     </div>
 
+    <!-- Trading Controls -->
+    <div class="panel-section">
+      <div class="section-header">Trading Controls</div>
+      <div style="padding:12px 16px;display:flex;flex-direction:column;gap:10px">
+        <div style="display:flex;justify-content:space-between;align-items:center">
+          <span style="font-size:11px;color:var(--text-secondary)">Quoting</span>
+          <button id="btnQuoting" onclick="toggleQuoting()" style="font-size:10px;padding:3px 10px;border-radius:4px;border:1px solid var(--border-bright);cursor:pointer;font-weight:600;background:rgba(239,68,68,0.15);color:var(--accent-red)">OFF</button>
+        </div>
+        <div style="display:flex;justify-content:space-between;align-items:center">
+          <span style="font-size:11px;color:var(--text-secondary)">Mode</span>
+          <button id="btnMode" onclick="toggleMode()" style="font-size:10px;padding:3px 10px;border-radius:4px;border:1px solid var(--border-bright);cursor:pointer;font-weight:600;background:rgba(234,179,8,0.15);color:var(--accent-yellow)">PAPER</button>
+        </div>
+        <div style="display:flex;justify-content:space-between;align-items:center">
+          <span style="font-size:11px;color:var(--text-secondary)">Kill Switch</span>
+          <button id="btnKill" onclick="toggleKill()" style="font-size:10px;padding:3px 10px;border-radius:4px;border:1px solid var(--border-bright);cursor:pointer;font-weight:600;background:rgba(34,197,94,0.15);color:var(--accent-green)">SAFE</button>
+        </div>
+        <div style="border-top:1px solid var(--border);padding-top:8px;margin-top:2px">
+          <div style="font-size:10px;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:6px">Risk Limits</div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px;font-size:10px">
+            <span style="color:var(--text-muted)">Max Contracts/Quote</span>
+            <span id="rlMaxContracts" class="mono" style="text-align:right;color:var(--text-secondary)">--</span>
+            <span style="color:var(--text-muted)">Max Daily Loss</span>
+            <span id="rlMaxDailyLoss" class="mono" style="text-align:right;color:var(--text-secondary)">--</span>
+            <span style="color:var(--text-muted)">Max Event Exposure</span>
+            <span id="rlMaxEvent" class="mono" style="text-align:right;color:var(--text-secondary)">--</span>
+            <span style="color:var(--text-muted)">Max Total Exposure</span>
+            <span id="rlMaxTotal" class="mono" style="text-align:right;color:var(--text-secondary)">--</span>
+            <span style="color:var(--text-muted)">Min Spread</span>
+            <span id="rlMinSpread" class="mono" style="text-align:right;color:var(--text-secondary)">--</span>
+            <span style="color:var(--text-muted)">Bankroll</span>
+            <span id="rlBankroll" class="mono" style="text-align:right;color:var(--text-secondary)">--</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Risk Monitor -->
+    <div class="panel-section">
+      <div class="section-header">Risk Monitor</div>
+      <div style="padding:12px 16px;display:flex;flex-direction:column;gap:8px">
+        <div>
+          <div style="display:flex;justify-content:space-between;font-size:10px;margin-bottom:3px">
+            <span style="color:var(--text-muted)">Daily Loss</span>
+            <span id="riskDailyLabel" class="mono" style="color:var(--text-secondary)">$0 / $250</span>
+          </div>
+          <div style="height:6px;background:var(--bg-primary);border-radius:3px;overflow:hidden">
+            <div id="riskDailyBar" style="height:100%;width:0%;background:var(--accent-green);border-radius:3px;transition:width 0.3s"></div>
+          </div>
+        </div>
+        <div>
+          <div style="display:flex;justify-content:space-between;font-size:10px;margin-bottom:3px">
+            <span style="color:var(--text-muted)">Total Exposure</span>
+            <span id="riskExposureLabel" class="mono" style="color:var(--text-secondary)">$0 / $2,500</span>
+          </div>
+          <div style="height:6px;background:var(--bg-primary);border-radius:3px;overflow:hidden">
+            <div id="riskExposureBar" style="height:100%;width:0%;background:var(--accent-green);border-radius:3px;transition:width 0.3s"></div>
+          </div>
+        </div>
+        <div id="riskWarnings" style="display:none;font-size:10px;color:var(--accent-yellow);padding:4px 0"></div>
+        <div>
+          <div style="font-size:10px;color:var(--text-muted);margin-bottom:4px">Open Positions</div>
+          <div id="positionsList" style="font-size:10px;color:var(--text-secondary)">No positions</div>
+        </div>
+      </div>
+    </div>
+
     <!-- RFQ Volume Chart -->
     <div class="panel-section">
       <div class="section-header" title="Hourly RFQ volume over the last 24 hours. Includes all RFQs stored in DB (post high-freq bot filter).">RFQ Volume (24h)</div>
@@ -867,8 +933,10 @@
                 const prob = side === 'no' ? (1 - mid) : mid;
                 const pct = (prob * 100).toFixed(1);
                 const midCents = Math.round(mid * 100);
-                oddsStr = '<span style="color:var(--text-muted);font-size:10px;margin-left:6px">' +
-                  midCents + '¢ mid → ' + pct + '%</span>';
+                const probColor = prob > 0.5 ? 'var(--accent-green)' : prob > 0.3 ? 'var(--accent-yellow)' : 'var(--accent-red)';
+                oddsStr = '<span style="font-size:10px;margin-left:6px">' +
+                  '<span style="color:var(--text-muted)">' + midCents + '¢</span> ' +
+                  '<span style="color:' + probColor + ';font-weight:500">' + pct + '%</span></span>';
               }
               return `<div class="leg-item">
                 <span class="${sideClass}" style="width:30px">${(side || '?').toUpperCase()}</span>
@@ -1202,6 +1270,118 @@
     }
   }
 
+  // ── Trading Controls ──
+
+  async function toggleQuoting() {
+    if (!confirm('Toggle quoting on/off?')) return;
+    await fetch('/api/controls/quoting', { method: 'POST' });
+    updateRiskPanel();
+  }
+  async function toggleMode() {
+    if (!confirm('Toggle between PAPER and LIVE mode?\n\nLIVE mode will submit REAL quotes with REAL money.')) return;
+    await fetch('/api/controls/mode', { method: 'POST' });
+    updateRiskPanel();
+  }
+  async function toggleKill() {
+    if (!confirm('Toggle kill switch?')) return;
+    await fetch('/api/controls/kill-switch', { method: 'POST' });
+    updateRiskPanel();
+  }
+
+  // ── Risk Monitor ──
+
+  async function updateRiskPanel() {
+    try {
+      const [risk, stats] = await Promise.all([
+        fetchJSON('/api/risk'),
+        fetchJSON('/api/stats'),
+      ]);
+
+      // Trading controls state
+      const btnQuoting = document.getElementById('btnQuoting');
+      const btnMode = document.getElementById('btnMode');
+      const btnKill = document.getElementById('btnKill');
+
+      if (stats.quoting_enabled) {
+        btnQuoting.textContent = 'ON';
+        btnQuoting.style.background = 'rgba(34,197,94,0.15)';
+        btnQuoting.style.color = 'var(--accent-green)';
+      } else {
+        btnQuoting.textContent = 'OFF';
+        btnQuoting.style.background = 'rgba(239,68,68,0.15)';
+        btnQuoting.style.color = 'var(--accent-red)';
+      }
+
+      if (stats.paper_mode) {
+        btnMode.textContent = 'PAPER';
+        btnMode.style.background = 'rgba(234,179,8,0.15)';
+        btnMode.style.color = 'var(--accent-yellow)';
+      } else {
+        btnMode.textContent = 'LIVE';
+        btnMode.style.background = 'rgba(239,68,68,0.15)';
+        btnMode.style.color = 'var(--accent-red)';
+      }
+
+      if (stats.kill_switch) {
+        btnKill.textContent = 'ACTIVE';
+        btnKill.style.background = 'rgba(239,68,68,0.15)';
+        btnKill.style.color = 'var(--accent-red)';
+      } else {
+        btnKill.textContent = 'SAFE';
+        btnKill.style.background = 'rgba(34,197,94,0.15)';
+        btnKill.style.color = 'var(--accent-green)';
+      }
+
+      // Risk limits
+      document.getElementById('rlMaxContracts').textContent = risk.limits.max_contracts_per_quote;
+      document.getElementById('rlMaxDailyLoss').textContent = '$' + risk.limits.max_daily_loss;
+      document.getElementById('rlMaxEvent').textContent = '$' + risk.limits.max_exposure_per_event;
+      document.getElementById('rlMaxTotal').textContent = '$' + risk.limits.max_total_exposure;
+      document.getElementById('rlMinSpread').textContent = (risk.limits.min_spread || 0.02) + '';
+      document.getElementById('rlBankroll').textContent = '$' + risk.limits.starting_bankroll.toLocaleString();
+
+      // Risk gauges
+      const dailyPct = Math.min(100, (risk.daily_loss_utilization || 0) * 100);
+      const exposurePct = Math.min(100, (risk.total_utilization || 0) * 100);
+
+      const dailyBar = document.getElementById('riskDailyBar');
+      dailyBar.style.width = dailyPct + '%';
+      dailyBar.style.background = dailyPct > 80 ? 'var(--accent-red)' : dailyPct > 50 ? 'var(--accent-yellow)' : 'var(--accent-green)';
+      document.getElementById('riskDailyLabel').textContent = '$' + Math.abs(risk.today_pnl || 0).toFixed(2) + ' / $' + risk.max_daily_loss;
+
+      const expBar = document.getElementById('riskExposureBar');
+      expBar.style.width = exposurePct + '%';
+      expBar.style.background = exposurePct > 80 ? 'var(--accent-red)' : exposurePct > 50 ? 'var(--accent-yellow)' : 'var(--accent-green)';
+      document.getElementById('riskExposureLabel').textContent = '$' + (risk.total_exposure || 0).toFixed(2) + ' / $' + risk.max_total_exposure.toLocaleString();
+
+      // Risk warnings
+      const warnEl = document.getElementById('riskWarnings');
+      if (risk.warnings && risk.warnings.length > 0) {
+        warnEl.style.display = 'block';
+        warnEl.innerHTML = risk.warnings.map(w => '⚠ ' + w).join('<br>');
+      } else {
+        warnEl.style.display = 'none';
+      }
+
+      // Positions
+      const posEl = document.getElementById('positionsList');
+      const positions = risk.exposure_by_event || [];
+      if (positions.length === 0) {
+        posEl.textContent = 'No positions';
+      } else {
+        posEl.innerHTML = positions.map(p => {
+          const pct = (p.utilization * 100).toFixed(0);
+          const color = p.utilization > 0.8 ? 'var(--accent-red)' : p.utilization > 0.5 ? 'var(--accent-yellow)' : 'var(--accent-green)';
+          return '<div style="display:flex;justify-content:space-between;padding:2px 0">' +
+            '<span class="mono" style="max-width:180px;overflow:hidden;text-overflow:ellipsis">' + p.event_ticker + '</span>' +
+            '<span class="mono" style="color:' + color + '">$' + p.exposure.toFixed(2) + ' (' + pct + '%)</span></div>';
+        }).join('');
+      }
+    } catch (err) {
+      console.error('Failed to update risk panel:', err);
+    }
+  }
+
   // ── Refresh All ──
 
   async function refreshAll() {
@@ -1214,6 +1394,7 @@
       updateBudgetChart(),
       updateLegsChart(),
       updateFilterStats(),
+      updateRiskPanel(),
     ]);
     document.getElementById('lastUpdate').textContent =
       new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false, timeZone: 'America/Los_Angeles' }) + ' PT';

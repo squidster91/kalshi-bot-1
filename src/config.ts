@@ -87,7 +87,7 @@ export const config = {
     paperMode: envBool('PAPER_MODE', true), // Default to paper mode (no real quotes)
     quotingEnabled: envBool('QUOTING_ENABLED', false),
     logLevel: envStr('LOG_LEVEL', 'info'),
-  },
+  } as { paperMode: boolean; quotingEnabled: boolean; logLevel: string },
 } as const;
 
 export function loadPrivateKey(): string {
