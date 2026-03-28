@@ -499,7 +499,10 @@ app.get('/api/backtest', (_req, res) => {
       if (targetCost <= 0) continue;
 
       // Compute naive fair value as product of leg probabilities
-      const legPriceValues = Object.values(prices);
+      // Filter out metadata keys (__thin__, __thin_TICKER) from snapshot
+      const legPriceValues = Object.entries(prices)
+        .filter(([k]) => !k.startsWith('__'))
+        .map(([, v]) => v as number);
       if (legPriceValues.length === 0) continue;
 
       let fairValue = 1;
