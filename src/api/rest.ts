@@ -105,14 +105,18 @@ export interface Market {
   event_ticker: string;
   title: string;
   status: string;
-  yes_bid: number;
-  yes_ask: number;
-  no_bid: number;
-  no_ask: number;
-  last_price: number;
-  volume: number;
-  open_interest: number;
-  category: string;
+  // Kalshi API v3 returns prices as dollar strings (e.g., "0.6800" = 68%)
+  yes_bid_dollars: string;
+  yes_ask_dollars: string;
+  no_bid_dollars: string;
+  no_ask_dollars: string;
+  last_price_dollars: string;
+  previous_price_dollars: string;
+  liquidity_dollars: string;
+  volume_fp: string;
+  open_interest_fp: string;
+  notional_value_dollars: string;
+  market_type: string;
   result?: string;
 }
 

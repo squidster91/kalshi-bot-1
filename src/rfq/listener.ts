@@ -306,37 +306,35 @@ export class RFQListener extends EventEmitter {
 
   /**
    * Extract YES implied probability from a Market object.
-   * Checks all available price fields: yes_bid, yes_ask (midpoint), no_bid, no_ask, last_price.
+   * Kalshi API v3 returns prices as dollar strings (e.g., "0.6800" = 68%).
    */
   private static extractProbFromMarket(m: {
-    yes_bid: number; yes_ask: number; no_bid: number; no_ask: number; last_price: number;
+    yes_bid_dollars: string; yes_ask_dollars: string;
+    no_bid_dollars: string; no_ask_dollars: string;
+    last_price_dollars: string;
   }): number | null {
+    const yesBid = parseFloat(m.yes_bid_dollars) || 0;
+    const yesAsk = parseFloat(m.yes_ask_dollars) || 0;
+    const noBid = parseFloat(m.no_bid_dollars) || 0;
+    const noAsk = parseFloat(m.no_ask_dollars) || 0;
+    const lastPrice = parseFloat(m.last_price_dollars) || 0;
+
     // Best: midpoint of yes_bid/yes_ask
-    if (m.yes_bid > 0 && m.yes_ask > 0) {
-      return ((m.yes_bid + m.yes_ask) / 2) / 100;
-    }
-    // yes_ask alone (what you'd pay for YES)
-    if (m.yes_ask > 0 && m.yes_ask < 100) {
-      return m.yes_ask / 100;
+    if (yesBid > 0 && yesAsk > 0) {
+      return (yesBid + yesAsk) / 2;
     }
     // yes_bid alone
-    if (m.yes_bid > 0) {
-      return m.yes_bid / 100;
+    if (yesBid > 0) return yesBid;
+    // yes_ask alone
+    if (yesAsk > 0 && yesAsk < 1) return yesAsk;
+    // Derive from NO side: prob(YES) = 1 - no_price
+    if (noBid > 0 && noAsk > 0) {
+      return 1 - (noBid + noAsk) / 2;
     }
-    // Derive from NO side: prob(YES) = 1 - no_price/100
-    if (m.no_bid > 0 && m.no_ask > 0) {
-      return 1 - ((m.no_bid + m.no_ask) / 2) / 100;
-    }
-    if (m.no_ask > 0 && m.no_ask < 100) {
-      return 1 - m.no_ask / 100;
-    }
-    if (m.no_bid > 0) {
-      return 1 - m.no_bid / 100;
-    }
+    if (noBid > 0) return 1 - noBid;
+    if (noAsk > 0 && noAsk < 1) return 1 - noAsk;
     // Last resort: last trade price
-    if (m.last_price > 0) {
-      return m.last_price / 100;
-    }
+    if (lastPrice > 0) return lastPrice;
     return null;
   }
 
@@ -427,6 +425,7 @@ export class RFQListener extends EventEmitter {
   }
 
   /** Try getOrderbook for a ticker, return YES probability or null */
+  private loggedFirstOrderbook = false;
   private async tryOrderbook(ticker: string): Promise<number | null> {
     if (this.rateLimited && Date.now() < this.rateLimitedUntil) return null;
     try {
@@ -434,6 +433,11 @@ export class RFQListener extends EventEmitter {
       const resp = await getOrderbook(ticker);
       const ob = resp?.orderbook;
       if (!ob) return null;
+      // Log first orderbook to see actual field format
+      if (!this.loggedFirstOrderbook) {
+        this.loggedFirstOrderbook = true;
+        logger.info('DIAG: First orderbook', { ticker, data: JSON.stringify(ob).slice(0, 500) });
+      }
       const result = RFQListener.extractProbFromOrderbook(ob as { yes?: Array<{ price: number; quantity: number }>; no?: Array<{ price: number; quantity: number }> });
       return result?.price ?? null;
     } catch (err) {
@@ -451,11 +455,14 @@ export class RFQListener extends EventEmitter {
       const mktResp = await getMarket(ticker);
       const m = mktResp?.market;
       if (!m) return null;
-      // Log first successful market response — ALL fields to discover actual API field names
       if (!this.loggedFirstMarketResult) {
         this.loggedFirstMarketResult = true;
-        logger.info('DIAG: Market keys', { ticker, keys: Object.keys(m) });
-        logger.info('DIAG: Market JSON', { data: JSON.stringify(m).slice(0, 800) });
+        const prob = RFQListener.extractProbFromMarket(m);
+        logger.info('DIAG: First market price', {
+          ticker, yes_bid: m.yes_bid_dollars, yes_ask: m.yes_ask_dollars,
+          no_bid: m.no_bid_dollars, no_ask: m.no_ask_dollars,
+          last: m.last_price_dollars, prob,
+        });
       }
       return RFQListener.extractProbFromMarket(m);
     } catch (err) {
