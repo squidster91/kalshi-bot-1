@@ -287,7 +287,10 @@ export class RFQListener extends EventEmitter {
 
     // Use the leg's event_ticker to find real markets for this event
     const eventTicker = leg.event_ticker;
-    if (!eventTicker) return null;
+    if (!eventTicker) {
+      logger.warn('Leg has no event_ticker', { market_ticker: leg.market_ticker, legData: JSON.stringify(leg).slice(0, 300) });
+      return null;
+    }
 
     let realTickers: string[] = [];
     const eventCached = this.eventMarketsCache.get(eventTicker);
@@ -317,7 +320,10 @@ export class RFQListener extends EventEmitter {
       }
     }
 
-    if (realTickers.length === 0) return null;
+    if (realTickers.length === 0) {
+      logger.warn('No markets found for event', { eventTicker, market_ticker: leg.market_ticker });
+      return null;
+    }
 
     // Match: strip KX from combo ticker and find a real ticker that shares the same suffix
     // e.g. KXMLBGAME-26MAR281507ATHTOR-TOR → find real ticker ending in -TOR
@@ -384,7 +390,19 @@ export class RFQListener extends EventEmitter {
     return null;
   }
 
+  private loggedFirstRfq = false;
+
   private async captureLegPrices(rfqId: string, legs: MVELeg[]): Promise<void> {
+    // Log raw leg data for the first RFQ to diagnose field availability
+    if (!this.loggedFirstRfq) {
+      this.loggedFirstRfq = true;
+      logger.info('DIAG: First RFQ raw legs', {
+        rfqId,
+        legCount: legs.length,
+        legs: legs.map(l => JSON.stringify(l).slice(0, 200)),
+      });
+    }
+
     const legPrices: Array<{ ticker: string; side: string; midPrice: number | null }> = [];
     const priceSnapshot: Record<string, number> = {};
     const thinTickers: string[] = [];
@@ -407,6 +425,13 @@ export class RFQListener extends EventEmitter {
         // Resolve combo KX ticker to the real underlying market ticker
         const realTicker = await this.resolveRealTicker(leg);
         if (!realTicker) {
+          logger.warn('Ticker resolution failed', {
+            rfqId,
+            market_ticker: leg.market_ticker,
+            event_ticker: leg.event_ticker || '<EMPTY>',
+            side: leg.side,
+            legKeys: Object.keys(leg),
+          });
           legPrices.push({ ticker: leg.market_ticker, side: leg.side, midPrice: null });
           continue;
         }
