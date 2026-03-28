@@ -395,8 +395,27 @@ export class RFQListener extends EventEmitter {
   private loggedFirstRfq = false;
   private loggedFirstPrice = false;
   private loggedTickerErrors = false;
+  private discoveredRealFormat = false;
 
   private async captureLegPrices(rfqId: string, legs: MVELeg[]): Promise<void> {
+    // One-time: discover real MLB market ticker format from Kalshi
+    if (!this.discoveredRealFormat) {
+      this.discoveredRealFormat = true;
+      try {
+        // Query open MLB game markets to see what real tickers look like
+        const resp = await getMarkets({ series_ticker: 'MLBGAME', status: 'open', limit: '10' });
+        const mkts = resp?.markets || [];
+        logger.info('DIAG: Real MLB market tickers from Kalshi', {
+          count: mkts.length,
+          tickers: mkts.map(m => m.ticker),
+          events: mkts.map(m => m.event_ticker),
+          sample: mkts.length > 0 ? { ticker: mkts[0].ticker, event_ticker: mkts[0].event_ticker, title: mkts[0].title, yes_bid: mkts[0].yes_bid, status: mkts[0].status } : null,
+        });
+      } catch (err) {
+        logger.warn('DIAG: Failed to query real MLB markets', { error: String(err).slice(0, 200) });
+      }
+    }
+
     // Log raw leg data for the first RFQ to diagnose field availability
     if (!this.loggedFirstRfq) {
       this.loggedFirstRfq = true;
