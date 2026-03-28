@@ -266,10 +266,94 @@ export class RFQListener extends EventEmitter {
   private lastApiCall = 0;
   private static MIN_API_INTERVAL_MS = 200; // Max ~5 API calls/sec
 
+  // Map combo leg ticker -> real underlying market ticker (discovered via getMarkets)
+  private tickerMap: Map<string, string> = new Map();
+  // Cache event_ticker -> list of real market tickers (to avoid re-fetching)
+  private eventMarketsCache: Map<string, { tickers: string[]; ts: number }> = new Map();
+
   // Track which tickers we've already subscribed to via WS
   private subscribedTickers = new Set<string>();
 
   private static LIQUIDITY_THRESHOLD = 100_000; // $100K in cents = 10,000,000 cents... actually quantity * price
+
+  /**
+   * Resolve a combo leg's KX-prefixed market_ticker to the real underlying market ticker.
+   * Uses the leg's event_ticker to discover actual markets via getMarkets API.
+   */
+  private async resolveRealTicker(leg: MVELeg): Promise<string | null> {
+    // Check cached mapping first
+    const cached = this.tickerMap.get(leg.market_ticker);
+    if (cached) return cached;
+
+    // Use the leg's event_ticker to find real markets for this event
+    const eventTicker = leg.event_ticker;
+    if (!eventTicker) return null;
+
+    let realTickers: string[] = [];
+    const eventCached = this.eventMarketsCache.get(eventTicker);
+    if (eventCached && (Date.now() - eventCached.ts) < 10 * 60_000) {
+      realTickers = eventCached.tickers;
+    } else {
+      try {
+        const timeSinceLastCall = Date.now() - this.lastApiCall;
+        if (timeSinceLastCall < RFQListener.MIN_API_INTERVAL_MS) {
+          await new Promise(r => setTimeout(r, RFQListener.MIN_API_INTERVAL_MS - timeSinceLastCall));
+        }
+        this.lastApiCall = Date.now();
+        const resp = await getMarkets({ event_ticker: eventTicker, status: 'open', limit: '50' });
+        realTickers = (resp?.markets || []).map(m => m.ticker);
+        this.eventMarketsCache.set(eventTicker, { tickers: realTickers, ts: Date.now() });
+        if (realTickers.length > 0) {
+          logger.info('Discovered markets for event', { eventTicker, count: realTickers.length, sample: realTickers.slice(0, 3) });
+        }
+      } catch (err) {
+        const errMsg = String(err);
+        if (errMsg.includes('429')) {
+          this.rateLimited = true;
+          this.rateLimitedUntil = Date.now() + 60_000;
+        }
+        logger.warn('Failed to discover markets for event', { eventTicker, error: errMsg });
+        return null;
+      }
+    }
+
+    if (realTickers.length === 0) return null;
+
+    // Match: strip KX from combo ticker and find a real ticker that shares the same suffix
+    // e.g. KXMLBGAME-26MAR281507ATHTOR-TOR → find real ticker ending in -TOR
+    const comboStripped = leg.market_ticker.startsWith('KX') ? leg.market_ticker.slice(2) : leg.market_ticker;
+    const lastDash = comboStripped.lastIndexOf('-');
+    const suffix = lastDash >= 0 ? comboStripped.slice(lastDash) : '';
+
+    // Try exact match first (stripping KX)
+    let match = realTickers.find(t => t === comboStripped);
+
+    // Try suffix match (same outcome team)
+    if (!match && suffix) {
+      match = realTickers.find(t => t.endsWith(suffix));
+    }
+
+    // Try substring containment
+    if (!match) {
+      match = realTickers.find(t => comboStripped.includes(t) || t.includes(comboStripped));
+    }
+
+    // Last resort: if only one market for this event, use it
+    if (!match && realTickers.length === 1) {
+      match = realTickers[0];
+    }
+
+    if (match) {
+      this.tickerMap.set(leg.market_ticker, match);
+      if (match !== comboStripped) {
+        logger.info('Ticker resolved', { combo: leg.market_ticker, real: match });
+      }
+      return match;
+    }
+
+    logger.warn('Could not match ticker', { combo: leg.market_ticker, stripped: comboStripped, suffix, available: realTickers });
+    return null;
+  }
 
   /**
    * Find the implied probability from the NO side of the orderbook.
@@ -320,21 +404,21 @@ export class RFQListener extends EventEmitter {
 
       // Fetch price from API if not cached
       if (price === null && !(this.rateLimited && now < this.rateLimitedUntil)) {
-        const timeSinceLastCall = Date.now() - this.lastApiCall;
-        if (timeSinceLastCall < RFQListener.MIN_API_INTERVAL_MS) {
-          await new Promise(r => setTimeout(r, RFQListener.MIN_API_INTERVAL_MS - timeSinceLastCall));
+        // Resolve combo KX ticker to the real underlying market ticker
+        const realTicker = await this.resolveRealTicker(leg);
+        if (!realTicker) {
+          legPrices.push({ ticker: leg.market_ticker, side: leg.side, midPrice: null });
+          continue;
         }
-
-        // Combo leg tickers use KX prefix (KXMLBGAME-...) but the underlying
-        // market orderbook lives at the non-KX ticker (MLBGAME-...)
-        const obTicker = leg.market_ticker.startsWith('KX')
-          ? leg.market_ticker.slice(2)
-          : leg.market_ticker;
 
         // Strategy 1: Try orderbook (NO-side $100K liquidity depth)
         try {
+          const timeSinceLastCall = Date.now() - this.lastApiCall;
+          if (timeSinceLastCall < RFQListener.MIN_API_INTERVAL_MS) {
+            await new Promise(r => setTimeout(r, RFQListener.MIN_API_INTERVAL_MS - timeSinceLastCall));
+          }
           this.lastApiCall = Date.now();
-          const resp = await getOrderbook(obTicker);
+          const resp = await getOrderbook(realTicker);
           const ob = resp?.orderbook;
           if (ob && Array.isArray(ob.no) && ob.no.length > 0) {
             const result = RFQListener.findNoLiquidityPrice(ob.no as Array<{ price: number; quantity: number }>);
@@ -356,8 +440,12 @@ export class RFQListener extends EventEmitter {
         // Strategy 2: Fallback to getMarket yes_bid / last_price
         if (price === null && !(this.rateLimited && now < this.rateLimitedUntil)) {
           try {
+            const timeSinceLastCall = Date.now() - this.lastApiCall;
+            if (timeSinceLastCall < RFQListener.MIN_API_INTERVAL_MS) {
+              await new Promise(r => setTimeout(r, RFQListener.MIN_API_INTERVAL_MS - timeSinceLastCall));
+            }
             this.lastApiCall = Date.now();
-            const mktResp = await getMarket(obTicker);
+            const mktResp = await getMarket(realTicker);
             const m = mktResp?.market;
             if (m) {
               const bid = m.yes_bid > 0 ? m.yes_bid : m.last_price;
@@ -372,7 +460,7 @@ export class RFQListener extends EventEmitter {
               this.rateLimited = true;
               this.rateLimitedUntil = Date.now() + 60_000;
             }
-            logger.debug('getMarket fallback failed', { ticker: obTicker, error: errMsg });
+            logger.debug('getMarket fallback failed', { ticker: realTicker, error: errMsg });
           }
         }
 
