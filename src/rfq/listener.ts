@@ -376,10 +376,17 @@ export class RFQListener extends EventEmitter {
         thin = cached.thin;
       }
 
-      // Fetch price from API if not cached — orderbook only ($100K NO-side depth)
+      // Fetch price from API if not cached
       if (price === null && !(this.rateLimited && Date.now() < this.rateLimitedUntil)) {
+        // Primary: orderbook $100K NO-side depth walk
         const obResult = await this.tryOrderbook(leg.market_ticker);
         if (obResult !== null) { price = obResult.price; thin = obResult.thin; }
+
+        // Fallback: getMarket bid/ask if orderbook is completely empty
+        if (price === null) {
+          const mktResult = await this.tryGetMarket(leg.market_ticker);
+          if (mktResult !== null) { price = mktResult; thin = true; }
+        }
 
         // Cache the result
         if (price !== null) {
