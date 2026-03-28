@@ -286,11 +286,13 @@ export class RFQListener extends EventEmitter {
     if (cached) return cached;
 
     // Use the leg's event_ticker to find real markets for this event
-    const eventTicker = leg.event_ticker;
-    if (!eventTicker) {
+    // Leg event_ticker is also KX-prefixed (combo), strip it to get the real underlying event
+    const rawEventTicker = leg.event_ticker;
+    if (!rawEventTicker) {
       logger.warn('Leg has no event_ticker', { market_ticker: leg.market_ticker, legData: JSON.stringify(leg).slice(0, 300) });
       return null;
     }
+    const eventTicker = rawEventTicker.startsWith('KX') ? rawEventTicker.slice(2) : rawEventTicker;
 
     let realTickers: string[] = [];
     const eventCached = this.eventMarketsCache.get(eventTicker);
@@ -307,7 +309,7 @@ export class RFQListener extends EventEmitter {
         realTickers = (resp?.markets || []).map(m => m.ticker);
         this.eventMarketsCache.set(eventTicker, { tickers: realTickers, ts: Date.now() });
         if (realTickers.length > 0) {
-          logger.info('Discovered markets for event', { eventTicker, count: realTickers.length, sample: realTickers.slice(0, 3) });
+          logger.info('Discovered real markets for event', { rawEventTicker, eventTicker, count: realTickers.length, sample: realTickers.slice(0, 3) });
         }
       } catch (err) {
         const errMsg = String(err);
