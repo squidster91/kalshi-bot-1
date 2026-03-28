@@ -570,7 +570,7 @@ app.get('/api/legs-distribution', (_req, res) => {
 // ── API: Live filter stats ──
 app.get('/api/filter-stats', (_req, res) => {
   if (!filterStatsProvider) {
-    res.json({ totalSeen: 0, botFiltered: 0, playerFiltered: 0, knownBots: 0 });
+    res.json({ totalSeen: 0, botFiltered: 0, playerFiltered: 0, nonMlbFiltered: 0, knownBots: 0 });
     return;
   }
   res.json(filterStatsProvider());

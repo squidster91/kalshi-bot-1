@@ -78,6 +78,11 @@ export class RFQListener extends EventEmitter {
   // Player prop detection
   private static PLAYER_PROP_PATTERN = /PTS|REB|AST|3PM|TPM|STL|BLK/i;
 
+  // MLB moneyline filter: only process parlays where ALL legs are MLB game (moneyline) markets
+  private static MLB_MONEYLINE_PATTERN = /MLB.*GAME|MLBGAME/i;
+  private static MLB_NON_MONEYLINE = /SPREAD|TOTAL|OVER|UNDER/i;
+  private nonMlbFiltered = 0;
+
   // Counters for reporting (reset at PST midnight)
   private totalSeen = 0;
   private botFiltered = 0;
@@ -92,6 +97,7 @@ export class RFQListener extends EventEmitter {
       this.totalSeen = 0;
       this.botFiltered = 0;
       this.playerFiltered = 0;
+      this.nonMlbFiltered = 0;
       this.counterDate = today;
     }
   }
@@ -142,6 +148,17 @@ export class RFQListener extends EventEmitter {
         return;
       }
 
+      // Filter 3: MLB moneylines only — every leg must be an MLB game market (not spread/total)
+      const allMlbMoneyline = parsed.legs.every(l => {
+        const t = l.market_ticker || '';
+        return RFQListener.MLB_MONEYLINE_PATTERN.test(t) && !RFQListener.MLB_NON_MONEYLINE.test(t);
+      });
+      if (!allMlbMoneyline) {
+        this.nonMlbFiltered++;
+        this.reportFilterStats(now);
+        return;
+      }
+
       this.reportFilterStats(now);
       this.rfqCount++;
 
@@ -182,12 +199,13 @@ export class RFQListener extends EventEmitter {
 
   private reportFilterStats(now: number): void {
     if (now - this.lastReportTime > 30_000 && this.totalSeen > 0) {
-      const totalFiltered = this.botFiltered + this.playerFiltered;
+      const totalFiltered = this.botFiltered + this.playerFiltered + this.nonMlbFiltered;
       const passed = this.totalSeen - totalFiltered;
       logger.info('Filter stats', {
         totalSeen: this.totalSeen,
         botFiltered: this.botFiltered,
         playerFiltered: this.playerFiltered,
+        nonMlbFiltered: this.nonMlbFiltered,
         passed,
         pctFiltered: ((totalFiltered / this.totalSeen) * 100).toFixed(1) + '%',
         knownBots: this.knownBots.size,
@@ -360,6 +378,7 @@ export class RFQListener extends EventEmitter {
       totalSeen: this.totalSeen,
       botFiltered: this.botFiltered,
       playerFiltered: this.playerFiltered,
+      nonMlbFiltered: this.nonMlbFiltered,
       knownBots: this.knownBots.size,
     };
   }

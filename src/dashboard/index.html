@@ -501,6 +501,7 @@
       <span>Filters today (PST):</span>
       <span style="color:var(--accent-green)" title="Creators sending 10+ RFQs within 1 minute, permanently flagged">HFT Bots: <strong id="fsBotCount">--</strong> <span id="fsBotPct" style="color:var(--text-muted)"></span></span>
       <span style="color:var(--accent-cyan)" title="Parlays containing player-prop legs (PTS/REB/AST/3PM/TPM/STL/BLK)">Player props: <strong id="fsPlayerCount">--</strong> <span id="fsPlayerPct" style="color:var(--text-muted)"></span></span>
+      <span style="color:var(--accent-yellow)" title="RFQs filtered because not all legs are MLB moneylines">Non-MLB: <strong id="fsNonMlbCount">--</strong> <span id="fsNonMlbPct" style="color:var(--text-muted)"></span></span>
       <span style="color:var(--text-muted)" title="Total raw RFQs received today before any filtering">Total seen: <strong id="fsTotalSeen" style="color:var(--text-secondary)">--</strong></span>
     </div>
     <div class="filter-bar">
@@ -1051,6 +1052,8 @@
       document.getElementById('fsBotPct').textContent = pct(data.botFiltered || 0);
       document.getElementById('fsPlayerCount').textContent = (data.playerFiltered || 0).toLocaleString();
       document.getElementById('fsPlayerPct').textContent = pct(data.playerFiltered || 0);
+      document.getElementById('fsNonMlbCount').textContent = (data.nonMlbFiltered || 0).toLocaleString();
+      document.getElementById('fsNonMlbPct').textContent = pct(data.nonMlbFiltered || 0);
       document.getElementById('fsTotalSeen').textContent = total.toLocaleString();
     } catch (err) {
       console.error('Failed to fetch filter stats:', err);
