@@ -120,15 +120,20 @@ export interface Market {
   result?: string;
 }
 
+// Legacy interface (kept for websocket compatibility)
 export interface OrderbookLevel {
   price: number;
   quantity: number;
 }
 
-export interface Orderbook {
-  yes: OrderbookLevel[];
-  no: OrderbookLevel[];
-  market_ticker: string;
+// Kalshi API v3: orderbook uses string dollar tuples [price_dollars, count_fp]
+export interface OrderbookFP {
+  yes_dollars: [string, string][];
+  no_dollars: [string, string][];
+}
+
+export async function getOrderbook(ticker: string): Promise<{ orderbook_fp: OrderbookFP }> {
+  return request({ method: 'GET', path: `/markets/${ticker}/orderbook` });
 }
 
 export async function getMarkets(params: {
@@ -150,9 +155,6 @@ export async function getMarket(ticker: string): Promise<{ market: Market }> {
   return request({ method: 'GET', path: `/markets/${ticker}` });
 }
 
-export async function getOrderbook(ticker: string): Promise<{ orderbook: Orderbook }> {
-  return request({ method: 'GET', path: `/markets/${ticker}/orderbook` });
-}
 
 export async function getMultivariateEventCollections(params?: {
   cursor?: string;

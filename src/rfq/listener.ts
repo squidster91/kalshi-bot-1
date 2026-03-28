@@ -269,36 +269,45 @@ export class RFQListener extends EventEmitter {
   private static LIQUIDITY_THRESHOLD = 100_000; // $100K notional
 
   /**
-   * Extract YES implied probability from orderbook levels.
-   * For NO levels: walk until $100K cumulative liquidity, implied prob = (100 - no_price) / 100
-   * For YES levels: walk until $100K cumulative liquidity, implied prob = yes_price / 100
+   * Extract YES implied probability from orderbook.
+   * Kalshi API v3: levels are string tuples [price_dollars, count_fp].
+   * e.g., no_dollars: [["0.3200", "500.00"], ["0.3300", "200.00"]]
+   * Walk NO side until $100K cumulative notional. YES prob = 1 - no_price.
    */
   private static extractProbFromOrderbook(
-    ob: { yes?: Array<{ price: number; quantity: number }>; no?: Array<{ price: number; quantity: number }> }
+    ob: { yes_dollars?: [string, string][]; no_dollars?: [string, string][] }
   ): { price: number; thin: boolean } | null {
-    // Try NO side first (more standard for implied YES probability)
-    if (ob.no && ob.no.length > 0) {
-      let cumDollars = 0;
-      for (const level of ob.no) {
-        cumDollars += level.quantity * (level.price / 100);
-        if (cumDollars >= RFQListener.LIQUIDITY_THRESHOLD) {
-          return { price: (100 - level.price) / 100, thin: false };
+    // Try NO side first
+    if (ob.no_dollars && ob.no_dollars.length > 0) {
+      let cumNotional = 0;
+      for (const [priceDollars, countFp] of ob.no_dollars) {
+        const price = parseFloat(priceDollars);
+        const count = parseFloat(countFp);
+        if (isNaN(price) || isNaN(count)) continue;
+        cumNotional += count * price; // count contracts × price per contract
+        if (cumNotional >= RFQListener.LIQUIDITY_THRESHOLD) {
+          return { price: 1 - price, thin: false };
         }
       }
       // Thin — use best NO level
-      return { price: (100 - ob.no[0].price) / 100, thin: true };
+      const bestPrice = parseFloat(ob.no_dollars[0][0]);
+      if (!isNaN(bestPrice)) return { price: 1 - bestPrice, thin: true };
     }
 
     // Try YES side as fallback
-    if (ob.yes && ob.yes.length > 0) {
-      let cumDollars = 0;
-      for (const level of ob.yes) {
-        cumDollars += level.quantity * (level.price / 100);
-        if (cumDollars >= RFQListener.LIQUIDITY_THRESHOLD) {
-          return { price: level.price / 100, thin: false };
+    if (ob.yes_dollars && ob.yes_dollars.length > 0) {
+      let cumNotional = 0;
+      for (const [priceDollars, countFp] of ob.yes_dollars) {
+        const price = parseFloat(priceDollars);
+        const count = parseFloat(countFp);
+        if (isNaN(price) || isNaN(count)) continue;
+        cumNotional += count * price;
+        if (cumNotional >= RFQListener.LIQUIDITY_THRESHOLD) {
+          return { price, thin: false };
         }
       }
-      return { price: ob.yes[0].price / 100, thin: true };
+      const bestPrice = parseFloat(ob.yes_dollars[0][0]);
+      if (!isNaN(bestPrice)) return { price: bestPrice, thin: true };
     }
 
     return null;
@@ -373,10 +382,10 @@ export class RFQListener extends EventEmitter {
         const mktResult = await this.tryGetMarket(leg.market_ticker);
         if (mktResult !== null) { price = mktResult; thin = true; }
 
-        // Strategy 2: getOrderbook (more granular depth data, but costs another API call)
+        // Strategy 2: getOrderbook (depth-weighted price with $100K liquidity threshold)
         if (price === null) {
           const obResult = await this.tryOrderbook(leg.market_ticker);
-          if (obResult !== null) { price = obResult; thin = false; }
+          if (obResult !== null) { price = obResult.price; thin = obResult.thin; }
         }
 
         // Cache the result
@@ -424,22 +433,20 @@ export class RFQListener extends EventEmitter {
     }
   }
 
-  /** Try getOrderbook for a ticker, return YES probability or null */
+  /** Try getOrderbook for a ticker, return { price, thin } or null */
   private loggedFirstOrderbook = false;
-  private async tryOrderbook(ticker: string): Promise<number | null> {
+  private async tryOrderbook(ticker: string): Promise<{ price: number; thin: boolean } | null> {
     if (this.rateLimited && Date.now() < this.rateLimitedUntil) return null;
     try {
       await this.rateDelay();
       const resp = await getOrderbook(ticker);
-      const ob = resp?.orderbook;
+      const ob = resp?.orderbook_fp;
       if (!ob) return null;
-      // Log first orderbook to see actual field format
       if (!this.loggedFirstOrderbook) {
         this.loggedFirstOrderbook = true;
-        logger.info('DIAG: First orderbook', { ticker, data: JSON.stringify(ob).slice(0, 500) });
+        logger.info('DIAG: First orderbook', { ticker, noLevels: ob.no_dollars?.length ?? 0, yesLevels: ob.yes_dollars?.length ?? 0, sample: JSON.stringify(ob.no_dollars?.slice(0, 3)) });
       }
-      const result = RFQListener.extractProbFromOrderbook(ob as { yes?: Array<{ price: number; quantity: number }>; no?: Array<{ price: number; quantity: number }> });
-      return result?.price ?? null;
+      return RFQListener.extractProbFromOrderbook(ob);
     } catch (err) {
       this.handleApiError(err);
       return null;
