@@ -451,14 +451,11 @@ export class RFQListener extends EventEmitter {
       const mktResp = await getMarket(ticker);
       const m = mktResp?.market;
       if (!m) return null;
-      // Log first successful market response to see all price fields
+      // Log first successful market response — ALL fields to discover actual API field names
       if (!this.loggedFirstMarketResult) {
         this.loggedFirstMarketResult = true;
-        logger.info('DIAG: First getMarket result', {
-          ticker, yes_bid: m.yes_bid, yes_ask: m.yes_ask,
-          no_bid: m.no_bid, no_ask: m.no_ask, last_price: m.last_price,
-          status: m.status,
-        });
+        logger.info('DIAG: Market keys', { ticker, keys: Object.keys(m) });
+        logger.info('DIAG: Market JSON', { data: JSON.stringify(m).slice(0, 800) });
       }
       return RFQListener.extractProbFromMarket(m);
     } catch (err) {
