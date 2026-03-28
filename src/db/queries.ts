@@ -28,6 +28,7 @@ export function insertRFQ(rfq: {
   contracts_requested: string;
   target_cost_dollars: string;
   computed_fair_value?: number;
+  creator_id?: string;
 }): void {
   const db = getDb();
   const legs = rfq.legs;
@@ -40,8 +41,8 @@ export function insertRFQ(rfq: {
   db.prepare(`
     INSERT OR IGNORE INTO rfqs_seen
       (id, market_ticker, event_ticker, legs_json, contracts_requested,
-       target_cost_dollars, received_at, computed_fair_value, num_legs, is_same_game, has_player_props)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+       target_cost_dollars, received_at, computed_fair_value, num_legs, is_same_game, has_player_props, creator_id)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).run(
     rfq.id,
     rfq.market_ticker,
@@ -53,7 +54,8 @@ export function insertRFQ(rfq: {
     rfq.computed_fair_value ?? null,
     legs.length,
     isSameGame,
-    hasPlayerProps
+    hasPlayerProps,
+    rfq.creator_id ?? null
   );
 }
 

@@ -524,6 +524,7 @@
         <thead>
           <tr>
             <th title="When this RFQ was received by our bot">Time</th>
+            <th title="Kalshi user ID of the account requesting the RFQ">Creator</th>
             <th title="Market category parsed from the ticker prefix">Category</th>
             <th title="Kalshi market ticker for this combo/parlay">Market Ticker</th>
             <th title="The underlying event this RFQ belongs to">Event</th>
@@ -535,7 +536,7 @@
           </tr>
         </thead>
         <tbody id="rfqTableBody">
-          <tr><td colspan="9" class="empty-state">Loading RFQ data...</td></tr>
+          <tr><td colspan="10" class="empty-state">Loading RFQ data...</td></tr>
         </tbody>
       </table>
     </div>
@@ -561,7 +562,7 @@
           <span class="stat-value" id="sumAvgLegs">--</span>
         </div>
         <div class="summary-cell">
-          <span class="stat-label" title="% of all RFQs removed by filters. Pre-DB: HFT bots. DB-level: player props.">Filtered Out</span>
+          <span class="stat-label" title="% of all RFQs removed by filters (HFT bots + player props + non-MLB). Uses real-time filter stats from the listener.">Filtered Out</span>
           <span class="stat-value" id="sumFilteredPct" style="color:var(--accent-red);font-size:14px">--</span>
         </div>
       </div>
@@ -793,7 +794,7 @@
     }
 
     if (filtered.length === 0) {
-      tbody.innerHTML = '<tr><td colspan="9" class="empty-state">No RFQs match filters</td></tr>';
+      tbody.innerHTML = '<tr><td colspan="10" class="empty-state">No RFQs match filters</td></tr>';
       return;
     }
 
@@ -835,8 +836,10 @@
 
       // All RFQs in this view are team-only (player props filtered server-side)
 
+      const creatorShort = r.creator_id ? r.creator_id.slice(0, 8) : '--';
       emit(`<tr style="${isHighLegs ? 'background:rgba(234,179,8,0.04)' : ''}">
         <td class="mono ${timeAgoClass(r.received_at)}">${timeAgo(r.received_at)}</td>
+        <td class="mono" style="font-size:10px;color:var(--text-muted);max-width:80px;overflow:hidden;text-overflow:ellipsis" title="${r.creator_id || ''}">${creatorShort}</td>
         <td><span class="cat-tag ${cat.cls}">${cat.label}</span></td>
         <td class="mono" style="max-width:200px;overflow:hidden;text-overflow:ellipsis" title="${r.market_ticker || ''}">${r.market_ticker || '--'}</td>
         <td class="mono" style="color:var(--text-secondary);max-width:160px;overflow:hidden;text-overflow:ellipsis" title="${r.event_ticker || ''}">${r.event_ticker || '--'}</td>
@@ -853,7 +856,7 @@
 
       if (legs.length > 0) {
         emit(`<tr id="legs-${i}" class="legs-detail">
-          <td colspan="9" style="padding:8px 12px 8px 48px;background:var(--bg-card)">
+          <td colspan="10" style="padding:8px 12px 8px 48px;background:var(--bg-card)">
             ${legs.map(l => {
               const side = (l.side || '').toLowerCase();
               const sideClass = side === 'yes' ? 'leg-side-yes' : 'leg-side-no';
@@ -978,11 +981,7 @@
       const container = document.getElementById('categoriesList');
       const countEl = document.getElementById('catCount');
 
-      const teamOnly = data.team_only || 0;
-      const raw = data.total_rfqs || 0;
-      const filteredOut = raw - teamOnly;
       document.getElementById('sumAvgLegs').textContent = data.avg_legs ? data.avg_legs.toFixed(1) : '--';
-      document.getElementById('sumFilteredPct').textContent = raw > 0 ? ((filteredOut / raw) * 100).toFixed(0) + '%' : '--';
 
       const cats = data.categories || {};
       const entries = Object.entries(cats).sort((a, b) => b[1] - a[1]);
@@ -1055,6 +1054,10 @@
       document.getElementById('fsNonMlbCount').textContent = (data.nonMlbFiltered || 0).toLocaleString();
       document.getElementById('fsNonMlbPct').textContent = pct(data.nonMlbFiltered || 0);
       document.getElementById('fsTotalSeen').textContent = total.toLocaleString();
+
+      // Update the "Filtered Out" summary cell with real-time stats
+      const totalFiltered = (data.botFiltered || 0) + (data.playerFiltered || 0) + (data.nonMlbFiltered || 0);
+      document.getElementById('sumFilteredPct').textContent = total > 0 ? ((totalFiltered / total) * 100).toFixed(0) + '%' : '--';
     } catch (err) {
       console.error('Failed to fetch filter stats:', err);
     }

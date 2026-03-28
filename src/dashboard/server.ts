@@ -35,7 +35,7 @@ function pstDateRange(): { start: string; end: string } {
 }
 
 // Filter stats provider — set by index.ts to expose listener stats
-type FilterStats = { totalSeen: number; botFiltered: number; playerFiltered: number; knownBots: number };
+type FilterStats = { totalSeen: number; botFiltered: number; playerFiltered: number; nonMlbFiltered: number; knownBots: number; botMlbDropped: number };
 let filterStatsProvider: (() => FilterStats) | null = null;
 export function setFilterStatsProvider(fn: () => FilterStats): void {
   filterStatsProvider = fn;
@@ -103,7 +103,7 @@ app.get('/api/rfqs', (_req, res) => {
         SELECT id, market_ticker, event_ticker, legs_json, contracts_requested,
                target_cost_dollars, received_at, quoted, quote_id,
                quote_price_yes, quote_price_no, computed_fair_value,
-               num_legs, is_same_game, leg_prices_snapshot, has_player_props
+               num_legs, is_same_game, leg_prices_snapshot, has_player_props, creator_id
         FROM rfqs_seen
         WHERE received_at >= ? AND received_at <= ? AND has_player_props = 0
         ORDER BY rowid DESC

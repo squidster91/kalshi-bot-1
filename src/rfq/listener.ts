@@ -1,7 +1,7 @@
 import { EventEmitter } from 'events';
 import { CommunicationsManager } from '../api/websocket';
 import { OrderbookManager } from '../api/websocket';
-import { MVELeg, getMarket, getMarkets } from '../api/rest';
+import { MVELeg, getMarket, getMarkets, getOrderbook } from '../api/rest';
 import { insertRFQ, insertRFQLegPrices, saveRFQLegPricesSnapshot, markRFQDeleted, upsertPriceCache, loadPriceCache, loadKnownBots, saveKnownBot, incrementDailyQualified } from '../db/queries';
 import { logger } from '../logger';
 
@@ -187,6 +187,7 @@ export class RFQListener extends EventEmitter {
         legs: parsed.legs,
         contracts_requested: parsed.contractsRequested.toString(),
         target_cost_dollars: parsed.targetCostDollars.toString(),
+        creator_id: parsed.creatorId,
       });
 
       // Capture leg prices asynchronously (don't block RFQ pipeline)
@@ -268,58 +269,53 @@ export class RFQListener extends EventEmitter {
   // Track which tickers we've already subscribed to via WS
   private subscribedTickers = new Set<string>();
 
+  private static LIQUIDITY_THRESHOLD = 100_000; // $100K in cents = 10,000,000 cents... actually quantity * price
+
+  /**
+   * Find the implied probability from the NO side of the orderbook.
+   * Walk NO levels until cumulative liquidity (quantity * price_cents) >= $100K threshold.
+   * Returns the price at that level as a probability (0-1), or null if not enough liquidity.
+   */
+  private static findNoLiquidityPrice(noLevels: Array<{ price: number; quantity: number }>): number | null {
+    if (!noLevels || noLevels.length === 0) return null;
+
+    let cumulativeDollars = 0;
+    for (const level of noLevels) {
+      // level.price is in cents (e.g., 45 = $0.45), quantity is number of contracts
+      // Dollar liquidity at this level = quantity * (price / 100)
+      const dollarLiquidity = level.quantity * (level.price / 100);
+      cumulativeDollars += dollarLiquidity;
+
+      if (cumulativeDollars >= RFQListener.LIQUIDITY_THRESHOLD) {
+        // NO price in cents → YES implied probability = (100 - no_price) / 100
+        const yesImplied = (100 - level.price) / 100;
+        return yesImplied;
+      }
+    }
+
+    // Not enough liquidity — use best NO if available
+    if (noLevels.length > 0) {
+      return (100 - noLevels[0].price) / 100;
+    }
+    return null;
+  }
+
   private async captureLegPrices(rfqId: string, legs: MVELeg[]): Promise<void> {
     const legPrices: Array<{ ticker: string; side: string; midPrice: number | null }> = [];
     const priceSnapshot: Record<string, number> = {};
     const now = Date.now();
 
-    // Step 1: Subscribe new leg tickers to orderbook WebSocket for future RFQs
-    if (this.orderbook) {
-      const newTickers = legs
-        .map(l => l.market_ticker)
-        .filter(t => !this.subscribedTickers.has(t));
-      if (newTickers.length > 0) {
-        this.orderbook.subscribeMarkets(newTickers);
-        for (const t of newTickers) this.subscribedTickers.add(t);
-        logger.debug('Subscribed to orderbook for leg tickers', { count: newTickers.length });
-      }
-    }
-
-    // Step 2: Try orderbook + cache first for all legs
-    const needFetch: string[] = []; // event_tickers that need API fetch
     for (const leg of legs) {
-      let mid: number | null = null;
+      let price: number | null = null;
 
-      // Try orderbook (in-memory, instant)
-      if (this.orderbook) {
-        mid = this.orderbook.getMidPrice(leg.market_ticker);
+      // Check cache first
+      const cached = this.priceCache.get(leg.market_ticker);
+      if (cached && (now - cached.ts) < RFQListener.CACHE_TTL_MS) {
+        price = cached.mid;
       }
 
-      // Try cache
-      if (mid === null) {
-        const cached = this.priceCache.get(leg.market_ticker);
-        if (cached && (now - cached.ts) < RFQListener.CACHE_TTL_MS) {
-          mid = cached.mid;
-        }
-      }
-
-      if (mid !== null) {
-        legPrices.push({ ticker: leg.market_ticker, side: leg.side, midPrice: mid });
-        priceSnapshot[leg.market_ticker] = mid;
-      } else {
-        // Need to fetch this one
-        legPrices.push({ ticker: leg.market_ticker, side: leg.side, midPrice: null });
-        if (!needFetch.includes(leg.event_ticker)) {
-          needFetch.push(leg.event_ticker);
-        }
-      }
-    }
-
-    // Step 3: Batch-fetch by event_ticker (1 API call per event instead of per leg)
-    if (needFetch.length > 0 && !(this.rateLimited && now < this.rateLimitedUntil)) {
-      this.rateLimited = false;
-
-      for (const eventTicker of needFetch) {
+      // Fetch orderbook for real liquidity-weighted price
+      if (price === null && !(this.rateLimited && now < this.rateLimitedUntil)) {
         const timeSinceLastCall = Date.now() - this.lastApiCall;
         if (timeSinceLastCall < RFQListener.MIN_API_INTERVAL_MS) {
           await new Promise(r => setTimeout(r, RFQListener.MIN_API_INTERVAL_MS - timeSinceLastCall));
@@ -327,47 +323,29 @@ export class RFQListener extends EventEmitter {
 
         try {
           this.lastApiCall = Date.now();
-          const resp = await getMarkets({ event_ticker: eventTicker, limit: '100' });
-          let cached = 0;
-          for (const m of resp.markets) {
-            let mid: number | null = null;
-            if (m.yes_bid > 0 && m.yes_ask > 0) {
-              mid = (m.yes_bid + m.yes_ask) / 2 / 100;
-            } else if (m.last_price > 0) {
-              mid = m.last_price / 100;
-            }
-            if (mid !== null) {
-              this.priceCache.set(m.ticker, { mid, ts: Date.now() });
-              try { upsertPriceCache(m.ticker, mid); } catch { /* ok */ }
-              cached++;
-            }
+          const resp = await getOrderbook(leg.market_ticker);
+          const ob = resp.orderbook;
+          price = RFQListener.findNoLiquidityPrice(ob.no as Array<{ price: number; quantity: number }>);
+
+          if (price !== null) {
+            this.priceCache.set(leg.market_ticker, { mid: price, ts: Date.now() });
+            try { upsertPriceCache(leg.market_ticker, price); } catch { /* ok */ }
           }
-          logger.info('Batch-fetched market prices', {
-            event: eventTicker,
-            markets: resp.markets.length,
-            cached,
-          });
         } catch (err) {
           const errMsg = String(err);
           if (errMsg.includes('429')) {
             this.rateLimited = true;
             this.rateLimitedUntil = Date.now() + 60_000;
-            logger.warn('Rate limited on batch market lookup, backing off 60s');
-            break;
+            logger.warn('Rate limited on orderbook fetch, backing off 60s');
+          } else {
+            logger.debug('Failed to fetch orderbook', { ticker: leg.market_ticker, error: errMsg });
           }
-          logger.debug('Failed to batch-fetch markets', { event: eventTicker, error: errMsg });
         }
       }
 
-      // Now fill in any prices we just fetched
-      for (let i = 0; i < legPrices.length; i++) {
-        if (legPrices[i].midPrice === null) {
-          const cached = this.priceCache.get(legPrices[i].ticker);
-          if (cached) {
-            legPrices[i].midPrice = cached.mid;
-            priceSnapshot[legPrices[i].ticker] = cached.mid;
-          }
-        }
+      legPrices.push({ ticker: leg.market_ticker, side: leg.side, midPrice: price });
+      if (price !== null) {
+        priceSnapshot[leg.market_ticker] = price;
       }
     }
 

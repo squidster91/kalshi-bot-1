@@ -167,6 +167,9 @@ function initSchema(db: Database.Database): void {
     db.exec(`ALTER TABLE rfqs_seen ADD COLUMN leg_prices_snapshot TEXT`);
   } catch { /* column already exists */ }
   try {
+    db.exec(`ALTER TABLE rfqs_seen ADD COLUMN creator_id TEXT`);
+  } catch { /* column already exists */ }
+  try {
     db.exec(`ALTER TABLE rfqs_seen ADD COLUMN has_player_props INTEGER DEFAULT 0`);
     // Only backfill when column is first added (new column = all zeros)
     // Do it in batches to avoid CPU/disk spikes
