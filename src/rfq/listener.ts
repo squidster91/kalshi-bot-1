@@ -264,7 +264,7 @@ export class RFQListener extends EventEmitter {
   private rateLimited = false;
   private rateLimitedUntil = 0;
   private lastApiCall = 0;
-  private static MIN_API_INTERVAL_MS = 200; // Max ~5 API calls/sec
+  private static MIN_API_INTERVAL_MS = 350; // ~3 API calls/sec to avoid 429s
 
   private static LIQUIDITY_THRESHOLD = 100_000; // $100K notional
 
@@ -376,17 +376,10 @@ export class RFQListener extends EventEmitter {
         thin = cached.thin;
       }
 
-      // Fetch price from API if not cached
+      // Fetch price from API if not cached — orderbook only ($100K NO-side depth)
       if (price === null && !(this.rateLimited && Date.now() < this.rateLimitedUntil)) {
-        // Strategy 1: getMarket (single API call, returns yes_bid/ask/no_bid/ask/last_price)
-        const mktResult = await this.tryGetMarket(leg.market_ticker);
-        if (mktResult !== null) { price = mktResult; thin = true; }
-
-        // Strategy 2: getOrderbook (depth-weighted price with $100K liquidity threshold)
-        if (price === null) {
-          const obResult = await this.tryOrderbook(leg.market_ticker);
-          if (obResult !== null) { price = obResult.price; thin = obResult.thin; }
-        }
+        const obResult = await this.tryOrderbook(leg.market_ticker);
+        if (obResult !== null) { price = obResult.price; thin = obResult.thin; }
 
         // Cache the result
         if (price !== null) {
