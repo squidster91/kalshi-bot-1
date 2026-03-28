@@ -393,6 +393,8 @@ export class RFQListener extends EventEmitter {
   }
 
   private loggedFirstRfq = false;
+  private loggedFirstPrice = false;
+  private loggedTickerErrors = false;
 
   private async captureLegPrices(rfqId: string, legs: MVELeg[]): Promise<void> {
     // Log raw leg data for the first RFQ to diagnose field availability
@@ -424,61 +426,34 @@ export class RFQListener extends EventEmitter {
 
       // Fetch price from API if not cached
       if (price === null && !(this.rateLimited && now < this.rateLimitedUntil)) {
-        // Resolve combo KX ticker to the real underlying market ticker
-        const realTicker = await this.resolveRealTicker(leg);
-        if (!realTicker) {
-          logger.warn('Ticker resolution failed', {
-            rfqId,
-            market_ticker: leg.market_ticker,
-            event_ticker: leg.event_ticker || '<EMPTY>',
-            side: leg.side,
-            legKeys: Object.keys(leg),
-          });
-          legPrices.push({ ticker: leg.market_ticker, side: leg.side, midPrice: null });
-          continue;
+        // Try multiple ticker formats: original KX ticker first, then KX-stripped
+        const tickersToTry = [leg.market_ticker];
+        if (leg.market_ticker.startsWith('KX')) {
+          tickersToTry.push(leg.market_ticker.slice(2));
         }
 
-        // Strategy 1: Try orderbook (NO-side $100K liquidity depth)
-        try {
-          const timeSinceLastCall = Date.now() - this.lastApiCall;
-          if (timeSinceLastCall < RFQListener.MIN_API_INTERVAL_MS) {
-            await new Promise(r => setTimeout(r, RFQListener.MIN_API_INTERVAL_MS - timeSinceLastCall));
-          }
-          this.lastApiCall = Date.now();
-          const resp = await getOrderbook(realTicker);
-          const ob = resp?.orderbook;
-          if (ob && Array.isArray(ob.no) && ob.no.length > 0) {
-            const result = RFQListener.findNoLiquidityPrice(ob.no as Array<{ price: number; quantity: number }>);
-            if (result !== null) {
-              price = result.price;
-              thin = result.thin;
-            }
-          }
-        } catch (err) {
-          const errMsg = String(err);
-          if (errMsg.includes('429')) {
-            this.rateLimited = true;
-            this.rateLimitedUntil = Date.now() + 60_000;
-            logger.warn('Rate limited on orderbook fetch, backing off 60s');
-          }
-          // Fall through to getMarket fallback
-        }
+        for (const tryTicker of tickersToTry) {
+          if (price !== null) break;
+          if (this.rateLimited && Date.now() < this.rateLimitedUntil) break;
 
-        // Strategy 2: Fallback to getMarket yes_bid / last_price
-        if (price === null && !(this.rateLimited && now < this.rateLimitedUntil)) {
+          // Try getMarket first (simpler, more reliable)
           try {
             const timeSinceLastCall = Date.now() - this.lastApiCall;
             if (timeSinceLastCall < RFQListener.MIN_API_INTERVAL_MS) {
               await new Promise(r => setTimeout(r, RFQListener.MIN_API_INTERVAL_MS - timeSinceLastCall));
             }
             this.lastApiCall = Date.now();
-            const mktResp = await getMarket(realTicker);
+            const mktResp = await getMarket(tryTicker);
             const m = mktResp?.market;
             if (m) {
               const bid = m.yes_bid > 0 ? m.yes_bid : m.last_price;
               if (bid > 0) {
                 price = bid / 100;
-                thin = true; // bid-based, not depth-based
+                thin = true;
+                if (!this.loggedFirstPrice) {
+                  this.loggedFirstPrice = true;
+                  logger.info('DIAG: First price via getMarket', { tryTicker, yes_bid: m.yes_bid, no_bid: m.no_bid, last_price: m.last_price, price });
+                }
               }
             }
           } catch (err) {
@@ -487,7 +462,41 @@ export class RFQListener extends EventEmitter {
               this.rateLimited = true;
               this.rateLimitedUntil = Date.now() + 60_000;
             }
-            logger.debug('getMarket fallback failed', { ticker: realTicker, error: errMsg });
+            // Log first few failures to diagnose which ticker format works
+            if (!this.loggedTickerErrors) {
+              this.loggedTickerErrors = true;
+              logger.info('DIAG: getMarket error', { tryTicker, error: errMsg.slice(0, 200) });
+            }
+          }
+
+          if (price !== null) break;
+
+          // Try orderbook (NO-side $100K liquidity depth)
+          try {
+            const timeSinceLastCall = Date.now() - this.lastApiCall;
+            if (timeSinceLastCall < RFQListener.MIN_API_INTERVAL_MS) {
+              await new Promise(r => setTimeout(r, RFQListener.MIN_API_INTERVAL_MS - timeSinceLastCall));
+            }
+            this.lastApiCall = Date.now();
+            const resp = await getOrderbook(tryTicker);
+            const ob = resp?.orderbook;
+            if (ob && Array.isArray(ob.no) && ob.no.length > 0) {
+              const result = RFQListener.findNoLiquidityPrice(ob.no as Array<{ price: number; quantity: number }>);
+              if (result !== null) {
+                price = result.price;
+                thin = result.thin;
+                if (!this.loggedFirstPrice) {
+                  this.loggedFirstPrice = true;
+                  logger.info('DIAG: First price via orderbook', { tryTicker, price, thin });
+                }
+              }
+            }
+          } catch (err) {
+            const errMsg = String(err);
+            if (errMsg.includes('429')) {
+              this.rateLimited = true;
+              this.rateLimitedUntil = Date.now() + 60_000;
+            }
           }
         }
 
