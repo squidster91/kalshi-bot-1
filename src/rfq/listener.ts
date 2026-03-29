@@ -269,64 +269,43 @@ export class RFQListener extends EventEmitter {
   private static LIQUIDITY_THRESHOLD = 100_000; // $100K notional
 
   /**
-   * Extract YES implied probability from orderbook.
-   * Kalshi API v3: levels are string tuples [price_dollars, count_fp].
-   * e.g., no_dollars: [["0.3200", "500.00"], ["0.3300", "200.00"]]
-   * Walk NO side until $100K cumulative notional. YES prob = 1 - no_price.
+   * Check orderbook depth — does the NO side have $100K+ total notional?
+   * Does NOT compute a price (bid/ask mid is used for fair value).
+   * Kalshi API v3: no_dollars contains NO bids sorted ascending ($0.01 → best bid).
    */
-  private static extractProbFromOrderbook(
+  private static checkOrderbookDepth(
     ob: { yes_dollars?: [string, string][]; no_dollars?: [string, string][] }
-  ): { price: number; thin: boolean; bestLevel?: number; depthLevel?: number; cumNotional?: number; levelsWalked?: number } | null {
-    // Try NO side first — walk depth until $100K, use marginal price
+  ): { isThick: boolean; totalNotional: number; levels: number } {
+    let totalNotional = 0;
+    let levels = 0;
+
+    // Sum total notional across all NO bid levels
     if (ob.no_dollars && ob.no_dollars.length > 0) {
-      let cumNotional = 0;
-      let levelsWalked = 0;
-      const bestNoPrice = parseFloat(ob.no_dollars[0][0]);
       for (const [priceDollars, countFp] of ob.no_dollars) {
         const price = parseFloat(priceDollars);
         const count = parseFloat(countFp);
         if (isNaN(price) || isNaN(count)) continue;
-        cumNotional += count * price; // count contracts × price per contract
-        levelsWalked++;
-        if (cumNotional >= RFQListener.LIQUIDITY_THRESHOLD) {
-          return {
-            price: 1 - price, thin: false,
-            bestLevel: isNaN(bestNoPrice) ? undefined : 1 - bestNoPrice,
-            depthLevel: 1 - price,
-            cumNotional: Math.round(cumNotional),
-            levelsWalked,
-          };
-        }
+        totalNotional += count * price;
+        levels++;
       }
-      // Thin — use best NO level
-      if (!isNaN(bestNoPrice)) return { price: 1 - bestNoPrice, thin: true, cumNotional: Math.round(cumNotional), levelsWalked };
     }
 
-    // Try YES side as fallback
-    if (ob.yes_dollars && ob.yes_dollars.length > 0) {
-      let cumNotional = 0;
-      let levelsWalked = 0;
-      const bestYesPrice = parseFloat(ob.yes_dollars[0][0]);
+    // If NO side is empty, try YES side
+    if (levels === 0 && ob.yes_dollars && ob.yes_dollars.length > 0) {
       for (const [priceDollars, countFp] of ob.yes_dollars) {
         const price = parseFloat(priceDollars);
         const count = parseFloat(countFp);
         if (isNaN(price) || isNaN(count)) continue;
-        cumNotional += count * price;
-        levelsWalked++;
-        if (cumNotional >= RFQListener.LIQUIDITY_THRESHOLD) {
-          return {
-            price, thin: false,
-            bestLevel: isNaN(bestYesPrice) ? undefined : bestYesPrice,
-            depthLevel: price,
-            cumNotional: Math.round(cumNotional),
-            levelsWalked,
-          };
-        }
+        totalNotional += count * price;
+        levels++;
       }
-      if (!isNaN(bestYesPrice)) return { price: bestYesPrice, thin: true, cumNotional: Math.round(cumNotional), levelsWalked };
     }
 
-    return null;
+    return {
+      isThick: totalNotional >= RFQListener.LIQUIDITY_THRESHOLD,
+      totalNotional: Math.round(totalNotional),
+      levels,
+    };
   }
 
   /**
@@ -394,30 +373,19 @@ export class RFQListener extends EventEmitter {
 
       // Fetch price from API if not cached
       if (price === null && !(this.rateLimited && Date.now() < this.rateLimitedUntil)) {
-        // Primary: orderbook $100K NO-side depth walk
-        const obResult = await this.tryOrderbook(leg.market_ticker);
-        if (obResult !== null) {
-          price = obResult.price; thin = obResult.thin;
-          // Log depth vs surface spread for thick markets
-          if (!thin && obResult.bestLevel != null && obResult.depthLevel != null) {
-            const spread = Math.abs(obResult.bestLevel - obResult.depthLevel);
-            if (spread > 0.005) { // Only log if >0.5% spread
-              logger.debug('Depth impact', {
-                ticker: leg.market_ticker,
-                bestLevel: obResult.bestLevel.toFixed(4),
-                depthLevel: obResult.depthLevel.toFixed(4),
-                spreadPct: (spread * 100).toFixed(2) + '%',
-                cumNotional: '$' + (obResult.cumNotional || 0).toLocaleString(),
-                levels: obResult.levelsWalked,
-              });
-            }
-          }
-        }
+        // Primary: getMarket bid/ask mid (matches Kalshi's displayed price)
+        const mktResult = await this.tryGetMarket(leg.market_ticker);
+        if (mktResult !== null) { price = mktResult; }
 
-        // Fallback: getMarket bid/ask if orderbook is completely empty
-        if (price === null) {
-          const mktResult = await this.tryGetMarket(leg.market_ticker);
-          if (mktResult !== null) { price = mktResult; thin = true; }
+        // Check orderbook depth for thick/thin classification
+        const depth = await this.checkDepth(leg.market_ticker);
+        if (depth !== null) {
+          thin = !depth.isThick;
+          if (!this.loggedDiag) {
+            logger.info('Depth check', { ticker: leg.market_ticker, isThick: depth.isThick, totalNotional: '$' + depth.totalNotional.toLocaleString(), price: price?.toFixed(4) });
+          }
+        } else {
+          thin = true; // No depth data = assume thin
         }
 
         // Cache the result
@@ -466,9 +434,9 @@ export class RFQListener extends EventEmitter {
     }
   }
 
-  /** Try getOrderbook for a ticker, return extracted prob or null */
+  /** Check orderbook depth for thick/thin classification */
   private loggedFirstOrderbook = false;
-  private async tryOrderbook(ticker: string): Promise<{ price: number; thin: boolean; bestLevel?: number; depthLevel?: number; cumNotional?: number; levelsWalked?: number } | null> {
+  private async checkDepth(ticker: string): Promise<{ isThick: boolean; totalNotional: number } | null> {
     if (this.rateLimited && Date.now() < this.rateLimitedUntil) return null;
     try {
       await this.rateDelay();
@@ -479,7 +447,7 @@ export class RFQListener extends EventEmitter {
         this.loggedFirstOrderbook = true;
         logger.info('DIAG: First orderbook', { ticker, noLevels: ob.no_dollars?.length ?? 0, yesLevels: ob.yes_dollars?.length ?? 0, sample: JSON.stringify(ob.no_dollars?.slice(0, 3)) });
       }
-      return RFQListener.extractProbFromOrderbook(ob);
+      return RFQListener.checkOrderbookDepth(ob);
     } catch (err) {
       this.handleApiError(err);
       return null;

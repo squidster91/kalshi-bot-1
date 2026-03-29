@@ -756,13 +756,15 @@ app.get('/api/debug-orderbook', async (req, res) => {
         is_thick: noCrossedLevel >= 0,
       };
 
-      // What our bot computes
+      // What our bot now computes (NEW: uses market mid for price, orderbook for depth only)
+      const noTotalNotional = Math.round(cumNotional);
+      const isThick = noTotalNotional >= THRESHOLD;
       result.bot_calculation = {
-        price: noDepthPrice !== null
-          ? ((1 - noDepthPrice) * 100).toFixed(2) + '%'
-          : (bestNoPrice !== null ? ((1 - bestNoPrice) * 100).toFixed(2) + '%' : 'null'),
-        thin: noCrossedLevel === -1,
-        source: noDepthPrice !== null ? `NO side depth (level ${noCrossedLevel})` : (bestNoPrice !== null ? 'NO side best level (thin)' : 'null'),
+        price: result.kalshi_yes_mid || 'no market data',
+        source: 'getMarket YES bid/ask mid',
+        thick: isThick,
+        no_total_notional: '$' + noTotalNotional.toLocaleString(),
+        note: 'Orderbook used ONLY for thick/thin classification, NOT for price',
       };
     } else {
       result.orderbook_error = String(obResp.reason);
